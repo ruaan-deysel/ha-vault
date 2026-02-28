@@ -192,7 +192,7 @@ Perform a custom action (customize this for your needs).
 **Example:**
 
 ```yaml
-service: vault.example_action
+action: vault.example_action
 data:
   # Add your parameters here
 ```
@@ -204,7 +204,7 @@ Manually refresh data from the API without waiting for the update interval.
 **Example:**
 
 ```yaml
-service: vault.reload_data
+action: vault.reload_data
 ```
 
 Use these services in automations or scripts for more control.
