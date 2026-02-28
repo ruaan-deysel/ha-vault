@@ -1,0 +1,13 @@
+{
+  "domain": "vault",
+  "name": "Vault",
+  "codeowners": [
+    "@ruaan-deysel"
+  ],
+  "config_flow": true,
+  "documentation": "https://github.com/ruaan-deysel/ha-vault-backup",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/ruaan-deysel/ha-vault-backup/issues",
+  "version": "0.1.0"
+}
