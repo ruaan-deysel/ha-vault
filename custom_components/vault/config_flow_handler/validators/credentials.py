@@ -14,7 +14,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from custom_components.vault.api import VaultApiClient
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -38,7 +38,7 @@ async def validate_credentials(hass: HomeAssistant, username: str, password: str
     client = VaultApiClient(
         username=username,
         password=password,
-        session=async_create_clientsession(hass),
+        session=async_get_clientsession(hass),
     )
     await client.async_get_data()  # May raise authentication/communication errors
 

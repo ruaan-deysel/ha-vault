@@ -83,8 +83,8 @@ from .entity import VaultEntity
 
 
 class Vault[EntityName](
-    VaultEntity,
     [PlatformEntityClass],
+    VaultEntity,
 ):
     """Representation of [entity description]."""
 
@@ -237,8 +237,8 @@ script/develop         # Start Home Assistant for testing
 from homeassistant.helpers.device_registry import DeviceInfo
 
 class Vault[EntityName](
-    VaultEntity,
     [PlatformEntityClass],
+    VaultEntity,
 ):
     """Entity with device grouping."""
 
@@ -291,7 +291,7 @@ async def async_press(self) -> None:
 ## Validation Checklist
 
 - [ ] Platform directory created with `__init__.py`
-- [ ] Entity class inherits from both `VaultEntity` and platform class
+- [ ] Entity class inherits from platform class first, then `VaultEntity` — e.g., `VaultConnectivitySensor(BinarySensorEntity, VaultEntity)` — order is significant for correct MRO (platform-then-vault pattern)
 - [ ] `_attr_has_entity_name = True` set (MANDATORY for new integrations)
 - [ ] Entity uses `translation_key` instead of hardcoded `name`
 - [ ] Unique ID set correctly
