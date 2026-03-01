@@ -1,4 +1,4 @@
-# Vault
+# Vault Backup Integration for Home Assistant
 
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
@@ -21,38 +21,32 @@ Uncomment and customize these badges if you want to use them:
 ## ✨ Features
 
 - **Easy Setup**: Simple configuration through the UI - no YAML required
-- **Air Quality Monitoring**: Track AQI and PM2.5 levels in real-time
-- **Filter Management**: Monitor filter life and get replacement alerts
-- **Smart Control**: Adjust fan speed, target humidity, and operating modes
-- **Child Lock**: Safety feature to prevent accidental changes
-- **Diagnostic Info**: View filter life, runtime hours, and device statistics
-- **Reconfigurable**: Change credentials anytime without removing the integration
-- **Options Flow**: Adjust settings like update interval after setup
-- **Custom Services**: Advanced control with built-in service calls
+- **Backup Job Monitoring**: Track status and progress of all your backup jobs
+- **Real-time Updates**: WebSocket connection for instant status updates
+- **Job Control**: Run backup jobs on-demand with button entities or service calls
+- **Restore Capability**: Restore backups directly from Home Assistant
+- **Storage Management**: Test storage destinations and monitor health
+- **Encryption Support**: Track encryption status and manage encrypted backups
+- **Diagnostic Info**: View Vault version, job statistics, and system health
+- **Reconfigurable**: Change connection settings anytime without removing the integration
 
 **This integration will set up the following platforms.**
 
-Platform | Description
--- | --
-`sensor` | Air quality index (AQI), PM2.5, filter life, and runtime
-`binary_sensor` | API connection status and filter replacement alert
-`switch` | Child lock and LED display controls
-`select` | Fan speed selection (Low/Medium/High/Auto)
-`number` | Target humidity setting (30-80%)
-`button` | Reset filter timer after replacement
-`fan` | Air purifier fan control with speed settings
-
-> **💡 Interactive Demo**: The entities are interconnected for demonstration:
->
-> - Press the **Reset Filter Timer** button → **Filter Life Remaining** sensor updates to 100%
-> - Change the **Air Purifier** fan speed → **Fan Speed** select syncs automatically
-> - Change the **Fan Speed** select → **Air Purifier** fan syncs automatically
+| Platform        | Description                                                       |
+| --------------- | ----------------------------------------------------------------- |
+| `sensor`        | Vault status, version, job statistics, per-job status and metrics |
+| `binary_sensor` | Connection status, per-job running state and success indicators   |
+| `button`        | Run backup jobs on-demand (one button per job)                    |
 
 ## 🚀 Quick Start
 
-### Step 1: Install the Integration
+### Prerequisites
 
-**Prerequisites:** This integration requires [HACS](https://hacs.xyz/) (Home Assistant Community Store) to be installed.
+- **Vault Server**: You must have a Vault backup server running and accessible from Home Assistant
+- **API Access**: You'll need the host, port (default: 24085), and API key for your Vault instance
+- **HACS**: This integration requires [HACS](https://hacs.xyz/) (Home Assistant Community Store) to be installed
+
+### Step 1: Install the Integration
 
 Click the button below to open the integration directly in HACS:
 
@@ -88,11 +82,13 @@ Click the button below to open the configuration dialog:
 
 Follow the setup wizard:
 
-1. Enter your username
-2. Enter your password
-3. Click Submit
+1. Enter your Vault server **host** (e.g., `vault.local` or `192.168.1.100`)
+2. Enter the **port** (default: `24085`)
+3. Enter your **API key** (if authentication is required)
+4. Enable **TLS** if your Vault server uses HTTPS
+5. Click Submit
 
-That's it! The integration will start loading your data.
+The integration will connect to your Vault server and start monitoring your backup jobs.
 
 #### Option 2: Manual Configuration
 
@@ -101,167 +97,293 @@ That's it! The integration will start loading your data.
 3. Search for "Vault"
 4. Follow the same setup steps as Option 1
 
-### Step 3: Adjust Settings (Optional)
+### Step 3: Verify Connection
 
-After setup, you can adjust options:
+After setup, check that the integration is working:
 
-1. Go to **Settings** → **Devices & Services**
-2. Find **Vault**
-3. Click **Configure** to adjust:
-   - Update interval (how often to refresh data)
-   - Enable debug logging
-
-You can also **Reconfigure** your credentials anytime without removing the integration.
+1. Go to **Settings** → **Devices & Services** → **Vault**
+2. You should see sensors for:
+   - Vault Status (should show "ok" or "healthy")
+   - Vault Online (binary sensor - should be "On")
+3. If you have backup jobs configured, you'll see entities for each job
 
 ### Step 4: Start Using!
 
-The integration creates several entities for your air purifier:
+The integration creates entities for monitoring and controlling your Vault backup system:
 
-- **Sensors**: Air quality index, PM2.5 levels, filter life remaining, total runtime
-- **Binary Sensors**: API connection status, filter replacement alert
-- **Switches**: Child lock, LED display control
-- **Select**: Fan speed (Low/Medium/High/Auto)
-- **Number**: Target humidity (30-80%)
-- **Button**: Reset filter timer
-- **Fan**: Air purifier fan control
+- **Global Sensors**: Vault status, version, job counts, encryption status
+- **Per-Job Sensors**: Job status, last run time, backup size, duration, etc.
+- **Global Binary Sensors**: Connection status
+- **Per-Job Binary Sensors**: Running state, last success indicator
+- **Per-Job Buttons**: Run backup job on-demand
 
 Find all entities in **Settings** → **Devices & Services** → **Vault** → click on the device.
 
 ## Available Entities
 
-### Sensors
+### Global Sensors
 
-- **Air Quality Index (AQI)**: Real-time air quality measurement (0-500 scale)
-  - Includes air quality category (Good/Moderate/Unhealthy/etc.)
-  - Health recommendations based on current AQI
-- **PM2.5**: Fine particulate matter concentration in µg/m³
-- **Filter Life Remaining** (Diagnostic): Shows remaining filter life as percentage
-- **Total Runtime** (Diagnostic): Total operating hours of the device
+These sensors provide information about your Vault instance:
 
-### Binary Sensors
-
-- **API Connection**: Shows whether the connection to the API is active
-  - On: Connected and receiving data
-  - Off: Connection lost or authentication failed
-  - Shows update interval and API endpoint information
-- **Filter Replacement Needed**: Alerts when filter needs replacement
-  - Shows estimated days remaining
-  - Turns on when filter life is low
-
-### Switches
-
-- **Child Lock**: Prevents accidental button presses on the device
-  - Icon changes based on state (locked/unlocked)
-- **LED Display**: Enable/disable the LED display
+- **Vault Status**: Current health status of the Vault service
+  - States: `ok`, `healthy`, `running`, or error states
+- **Vault Version** (Diagnostic): Version of the Vault server
+- **Jobs Total** (Diagnostic): Total number of backup jobs configured
+  - Disabled by default - enable in entity settings if needed
+- **Jobs Enabled** (Diagnostic): Number of enabled backup jobs
+  - Disabled by default - enable in entity settings if needed
+- **Encryption Status** (Diagnostic): Whether encryption is enabled
+  - States: `enabled` or `disabled`
   - Disabled by default - enable in entity settings if needed
 
-### Select
+### Per-Job Sensors
 
-- **Fan Speed**: Choose from Low, Medium, High, or Auto
-  - Icon changes dynamically based on selected speed
-  - Auto mode adjusts speed based on air quality
-  - Syncs bidirectionally with the Air Purifier fan entity
+For each backup job configured in Vault, the integration creates sensors to monitor that job:
 
-### Number
+- **Job Status**: Current status of the backup job
+  - States: `idle`, `running`, `completed`, `failed`
+- **Last Run** (Diagnostic): Timestamp of the last backup run
+- **Last Run Duration** (Diagnostic): How long the last backup took (in seconds)
+- **Total Runs** (Diagnostic): Total number of times this job has run
+- **Last Backup Size** (Diagnostic): Size of the last backup (in bytes/MB/GB)
+- **Last Run Progress** (Diagnostic): Completion percentage during active backup (0-100%)
 
-- **Target Humidity**: Set desired humidity level (30-80%)
-  - Adjustable in 5% increments
-  - Displayed as a slider in the UI
+### Global Binary Sensors
 
-### Button
+- **Vault Online**: Connection status to the Vault server
+  - On: Connected and receiving data from Vault API
+  - Off: Connection lost or authentication failed
+  - Device class: Connectivity
+  - Shows last update time and connection details
 
-- **Reset Filter Timer**: Reset the filter life to 100%
-  - Press to reset after replacing the filter
-  - Instantly updates the Filter Life Remaining sensor
+### Per-Job Binary Sensors
 
-### Fan
+For each backup job, the integration creates binary sensors:
 
-- **Air Purifier**: Control the air purifier fan speed and power
-  - Three speed levels: Low, Medium, High
-  - Syncs bidirectionally with the Fan Speed select entity
-  - Turn on/off functionality
+- **Job Running**: Indicates whether the backup job is currently running
+  - On: Job is actively running
+  - Off: Job is idle or completed
+  - Device class: Running
+- **Last Success**: Indicates whether the last backup completed successfully
+  - On: Last backup completed successfully
+  - Off: Last backup failed or no runs yet
+
+### Per-Job Buttons
+
+For each backup job, the integration creates a button:
+
+- **Run Now**: Trigger an immediate backup run for this job
+  - Press to start the backup job via the Vault API
+  - Real-time progress updates via WebSocket
+  - Coordinator refreshes automatically after triggering
 
 ## Custom Services
 
-The integration provides services for advanced automation:
+The integration provides powerful services for backup management and automation:
 
-### `vault.example_action`
+### `vault.run_backup`
 
-Perform a custom action (customize this for your needs).
+Trigger an immediate backup run for a specific Vault job. You can specify the job by ID or name.
 
-**Example:**
+**Parameters:**
+
+- `job_id` (optional): The numeric ID of the backup job to run
+- `job_name` (optional): The name of the backup job to run
+
+> **Note:** Provide either `job_id` or `job_name`, not both.
+
+**Example using job ID:**
 
 ```yaml
-action: vault.example_action
+action: vault.run_backup
 data:
-  # Add your parameters here
+  job_id: 1
 ```
 
-### `vault.reload_data`
+**Example using job name:**
 
-Manually refresh data from the API without waiting for the update interval.
+```yaml
+action: vault.run_backup
+data:
+  job_name: "My Important Backups"
+```
+
+### `vault.restore`
+
+Restore an item from a Vault backup restore point. This allows you to restore containers, VMs, or folders directly from Home Assistant.
+
+**Parameters:**
+
+- `job_id` (required): The job ID that created the restore point
+- `restore_point_id` (required): The ID of the restore point to restore from
+- `item_name` (required): Name of the item to restore (container name, VM name, or folder)
+- `item_type` (required): Type of item - `container`, `vm`, or `folder`
+- `passphrase` (optional): Encryption passphrase if the backup was encrypted
+- `destination` (optional): Override the default restore destination path
+
+**Example restoring a container:**
+
+```yaml
+action: vault.restore
+data:
+  job_id: 1
+  restore_point_id: 42
+  item_name: "my-container"
+  item_type: "container"
+```
+
+**Example restoring an encrypted backup:**
+
+```yaml
+action: vault.restore
+data:
+  job_id: 1
+  restore_point_id: 42
+  item_name: "my-vm"
+  item_type: "vm"
+  passphrase: "my-secure-passphrase"
+  destination: "/mnt/restored-vms/"
+```
+
+### `vault.test_storage`
+
+Test connectivity to a Vault storage destination. Useful for verifying storage configuration or diagnosing connection issues.
+
+**Parameters:**
+
+- `storage_id` (required): The ID of the storage destination to test
 
 **Example:**
 
 ```yaml
-action: vault.reload_data
+action: vault.test_storage
+data:
+  storage_id: 1
 ```
 
-Use these services in automations or scripts for more control.
+The test result will be logged. Check your Home Assistant logs for success or error messages.
+
+## Automation Examples
+
+### Automated Nightly Backups
+
+Create an automation to run your backups at 2 AM every day:
+
+```yaml
+automation:
+  - alias: "Run Nightly Vault Backups"
+    trigger:
+      - platform: time
+        at: "02:00:00"
+    action:
+      - action: vault.run_backup
+        data:
+          job_name: "Nightly Full Backup"
+```
+
+### Backup Before System Updates
+
+Trigger a backup before running system updates:
+
+```yaml
+automation:
+  - alias: "Backup Before Updates"
+    trigger:
+      - platform: state
+        entity_id: update.home_assistant_core_update
+        to: "on"
+    action:
+      - action: vault.run_backup
+        data:
+          job_id: 1
+      - delay:
+          minutes: 30
+      - action: update.install
+        target:
+          entity_id: update.home_assistant_core_update
+```
+
+### Alert on Backup Failure
+
+Get notified when a backup job fails:
+
+```yaml
+automation:
+  - alias: "Vault Backup Failed Alert"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.my_backup_job_last_success
+        to: "off"
+        for:
+          minutes: 5
+    action:
+      - action: notify.mobile_app
+        data:
+          title: "Backup Failed"
+          message: "Vault backup job failed. Check the logs."
+```
+
+### Monitor Backup Progress
+
+Track backup progress and show a notification:
+
+```yaml
+automation:
+  - alias: "Backup Progress Notification"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.my_backup_job_running
+        to: "on"
+    action:
+      - action: notify.persistent_notification
+        data:
+          title: "Backup Running"
+          message: "Backup job started. Current progress: {{ states('sensor.my_backup_job_last_run_progress') }}%"
+```
 
 ## Configuration Options
 
 ### During Setup
 
-Name | Required | Description
--- | -- | --
-Username | Yes | Your account username
-Password | Yes | Your account password
+| Name    | Required | Description                                             | Default |
+| ------- | -------- | ------------------------------------------------------- | ------- |
+| Host    | Yes      | Hostname or IP address of your Vault server             | -       |
+| Port    | No       | Port number for Vault API                               | 24085   |
+| API Key | No       | Authentication key (if required by your Vault instance) | -       |
+| TLS     | No       | Enable HTTPS/TLS connection                             | False   |
 
 ### After Setup (Options)
 
-You can change these anytime by clicking **Configure**:
-
-Name | Default | Description
--- | -- | --
-Update Interval | 1 hour | How often to refresh data
-Enable Debugging | Off | Enable extra debug logging
-
-## Troubleshooting
-
-### Authentication Issues
-
-#### Reauthentication
-
-If your credentials expire or change, Home Assistant will automatically prompt you to reauthenticate:
-
-1. Go to **Settings** → **Devices & Services**
-2. Look for **"Action Required"** or **"Configuration Required"** message on the integration
-3. Click **"Reconfigure"** or follow the prompt
-4. Enter your updated credentials
-5. Click Submit
-
-The integration will automatically resume normal operation with the new credentials.
-
-#### Manual Credential Update
-
-You can also update credentials at any time without waiting for an error:
+You can change connection settings anytime:
 
 1. Go to **Settings** → **Devices & Services**
 2. Find **Vault**
 3. Click the **3 dots menu** → **Reconfigure**
-4. Enter new username/password
+4. Update the connection settings
 5. Click Submit
 
-#### Connection Status
+## Troubleshooting
 
-Monitor your connection status with the **API Connection** binary sensor:
+### Connection Issues
 
-- **On** (Connected): Integration is receiving data normally
-- **Off** (Disconnected): Connection lost or authentication failed
-  - Check the binary sensor attributes for diagnostic information
-  - Verify credentials if authentication failed
-  - Check network connectivity
+#### Check Vault Service
+
+If the **Vault Online** binary sensor shows "Off":
+
+1. Verify your Vault server is running and accessible
+2. Check the host and port settings
+3. Ensure Home Assistant can reach the Vault server (network connectivity)
+4. Verify firewall rules allow access to the Vault port (default: 24085)
+5. Check API key if authentication is required
+
+#### Enable TLS
+
+If your Vault server uses HTTPS:
+
+1. Go to **Settings** → **Devices & Services** → **Vault**
+2. Click **Reconfigure**
+3. Enable the **TLS** option
+4. Click Submit
 
 ### Enable Debug Logging
 
@@ -274,25 +396,50 @@ logger:
     custom_components.vault: debug
 ```
 
+Then restart Home Assistant. Check the logs at:
+
+- **Settings** → **System** → **Logs**
+- Or in `config/home-assistant.log`
+
 ### Common Issues
 
-#### Authentication Errors
+#### "Cannot Connect" Error
 
-If you receive authentication errors:
+If you receive connection errors:
 
-1. Verify your username and password are correct
-2. Check that your account has the necessary permissions
-3. Wait for the automatic reauthentication prompt, or manually reconfigure
-4. Check the API Connection binary sensor for status
+1. Verify the Vault server is running: `curl http://YOUR_HOST:24085/health`
+2. Check the host and port settings in the integration configuration
+3. Verify network connectivity between Home Assistant and Vault server
+4. Check firewall rules on both sides
+5. Try accessing the Vault API from Home Assistant's container/machine
 
-#### Device Not Responding
+#### "API Error" Messages
 
-If your device is not responding:
+If you receive API-related errors:
 
-1. Check the **API Connection** binary sensor - it should be "On"
-2. Check your network connection
-3. Verify the device is powered on
-4. Check the integration diagnostics (Settings → Devices & Services → Vault → 3 dots → Download diagnostics)
+1. Verify your API key is correct (if authentication is required)
+2. Check the Vault server logs for detailed error messages
+3. Ensure your Vault version is compatible
+4. Download diagnostics (Settings → Devices & Services → Vault → 3 dots → Download diagnostics)
+
+#### No Entities Appearing
+
+If entities aren't showing up:
+
+1. Verify the **Vault Online** sensor shows "On"
+2. Check that backup jobs are configured in Vault
+3. Wait for the initial data fetch (up to 1 minute)
+4. Reload the integration (Settings → Devices & Services → Vault → 3 dots → Reload)
+5. Check logs for errors
+
+#### WebSocket Connection Issues
+
+If real-time updates aren't working:
+
+1. WebSocket connections to Vault use the same host/port as the REST API
+2. Check that WebSocket connections aren't blocked by firewalls or proxies
+3. Verify the Vault server supports WebSocket connections
+4. Check logs for WebSocket-specific errors
 
 ## 🤝 Contributing
 
@@ -345,7 +492,7 @@ Both options give you the same fully-configured development environment with Hom
 >
 > Please be aware that AI-assisted development may result in unexpected behavior or edge cases that haven't been thoroughly tested. If you encounter any issues, please [open an issue](../../issues) on GitHub.
 >
-> *Note: This section can be removed or modified if AI assistance was not used in your integration's development.*
+> _Note: This section can be removed or modified if AI assistance was not used in your integration's development._
 
 ---
 
