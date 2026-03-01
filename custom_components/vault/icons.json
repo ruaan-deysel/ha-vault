@@ -1,0 +1,90 @@
+{
+  "entity": {
+    "sensor": {
+      "vault_status": {
+        "default": "mdi:shield-check",
+        "state": {
+          "ok": "mdi:shield-check",
+          "unavailable": "mdi:shield-off"
+        }
+      },
+      "vault_version": {
+        "default": "mdi:information-outline"
+      },
+      "jobs_total": {
+        "default": "mdi:briefcase-outline"
+      },
+      "jobs_enabled": {
+        "default": "mdi:briefcase-check"
+      },
+      "encryption_status": {
+        "default": "mdi:lock-outline",
+        "state": {
+          "enabled": "mdi:lock",
+          "disabled": "mdi:lock-open-variant"
+        }
+      },
+      "job_status": {
+        "default": "mdi:backup-restore",
+        "state": {
+          "running": "mdi:progress-clock",
+          "completed": "mdi:check-circle",
+          "partial": "mdi:alert-circle",
+          "failed": "mdi:close-circle",
+          "idle": "mdi:sleep"
+        }
+      },
+      "job_last_run": {
+        "default": "mdi:clock-outline"
+      },
+      "job_last_size": {
+        "default": "mdi:database"
+      },
+      "job_items_backed_up": {
+        "default": "mdi:package-variant-closed-check"
+      },
+      "job_items_failed": {
+        "default": "mdi:package-variant-closed-remove"
+      },
+      "job_restore_points": {
+        "default": "mdi:history"
+      },
+      "job_progress": {
+        "default": "mdi:progress-clock"
+      },
+      "storage_name": {
+        "default": "mdi:harddisk"
+      },
+      "storage_type": {
+        "default": "mdi:folder-network"
+      }
+    },
+    "binary_sensor": {
+      "vault_online": {
+        "default": "mdi:server-network"
+      },
+      "job_running": {
+        "default": "mdi:progress-wrench"
+      },
+      "job_last_success": {
+        "default": "mdi:check-decagram"
+      }
+    },
+    "button": {
+      "run_backup": {
+        "default": "mdi:play-circle"
+      }
+    }
+  },
+  "services": {
+    "run_backup": {
+      "service": "mdi:play-circle"
+    },
+    "restore": {
+      "service": "mdi:backup-restore"
+    },
+    "test_storage": {
+      "service": "mdi:connection"
+    }
+  }
+}

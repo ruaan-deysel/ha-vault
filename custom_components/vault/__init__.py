@@ -1,191 +1,226 @@
-"""
-Custom integration to integrate vault with Home Assistant.
-
-This integration demonstrates best practices for:
-- Config flow setup (user, reconfigure, reauth)
-- DataUpdateCoordinator pattern for efficient data fetching
-- Multiple platform types (sensor, binary_sensor, switch, select, number)
-- Service registration and handling
-- Device and entity management
-- Proper error handling and recovery
-
-For more details about this integration, please refer to:
-https://github.com/ruaan-deysel/ha-vault-backup
-
-For integration development guidelines:
-https://developers.home-assistant.io/docs/creating_integration_manifest
-"""
+"""The Vault integration for Home Assistant."""
 
 from __future__ import annotations
 
-from datetime import timedelta
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME, Platform
+import voluptuous as vol
+
+from homeassistant.const import Platform
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-import homeassistant.helpers.config_validation as cv
-from homeassistant.loader import async_get_loaded_integration
 
-from .api import VaultApiClient
-from .const import DOMAIN, LOGGER
-from .coordinator import VaultDataUpdateCoordinator
-from .data import VaultData
-from .service_actions import async_setup_services
+from .api import VaultApiClient, VaultApiError, VaultConnectionError, VaultWebSocketClient
+from .api.models import WebSocketEvent
+from .const import CONF_API_KEY, CONF_HOST, CONF_PORT, CONF_TLS, DEFAULT_PORT, DOMAIN, LOGGER
+from .coordinator import VaultData, VaultDataUpdateCoordinator
 
 if TYPE_CHECKING:
-    from homeassistant.core import HomeAssistant
+    from homeassistant.core import HomeAssistant, ServiceCall
 
-    from .data import VaultConfigEntry
+    from .coordinator import VaultConfigEntry
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
-    Platform.FAN,
-    Platform.NUMBER,
-    Platform.SELECT,
     Platform.SENSOR,
-    Platform.SWITCH,
 ]
 
-# This integration is configured via config entries only
-CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+# Service schemas
+SERVICE_RUN_BACKUP = "run_backup"
+SERVICE_RESTORE = "restore"
+SERVICE_TEST_STORAGE = "test_storage"
+
+SCHEMA_RUN_BACKUP = vol.Schema(
+    {
+        vol.Optional("job_id"): cv.positive_int,
+        vol.Optional("job_name"): cv.string,
+    }
+)
+
+SCHEMA_RESTORE = vol.Schema(
+    {
+        vol.Required("job_id"): cv.positive_int,
+        vol.Required("restore_point_id"): cv.positive_int,
+        vol.Required("item_name"): cv.string,
+        vol.Required("item_type"): vol.In(["container", "vm", "folder"]),
+        vol.Optional("passphrase"): cv.string,
+        vol.Optional("destination"): cv.string,
+    }
+)
+
+SCHEMA_TEST_STORAGE = vol.Schema(
+    {
+        vol.Required("storage_id"): cv.positive_int,
+    }
+)
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
-    """
-    Set up the integration.
+def _get_client_from_entry(hass: HomeAssistant, call: ServiceCall) -> VaultApiClient:
+    """Return the API client from the first loaded config entry."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    if not entries:
+        msg = "No Vault config entries found"
+        raise ServiceValidationError(msg)
+    entry: VaultConfigEntry = entries[0]  # type: ignore[assignment]
+    return entry.runtime_data.client
 
-    This is called once at Home Assistant startup to register service actions.
-    Service actions must be registered here (not in async_setup_entry) to ensure:
-    - Service action validation works correctly
-    - Service actions are available even without config entries
-    - Helpful error messages are provided
 
-    This is a Silver Quality Scale requirement.
+async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
+    """Set up the Vault integration — register services."""
 
-    Args:
-        hass: The Home Assistant instance.
-        config: The Home Assistant configuration.
+    async def _handle_run_backup(call: ServiceCall) -> None:
+        """Handle vault.run_backup service call."""
+        client = _get_client_from_entry(hass, call)
+        job_id: int | None = call.data.get("job_id")
+        job_name: str | None = call.data.get("job_name")
 
-    Returns:
-        True if setup was successful.
+        if job_id is None and job_name is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_job_id",
+            )
 
-    For more information:
-    https://developers.home-assistant.io/docs/dev_101_services
-    """
-    await async_setup_services(hass)
+        # Resolve job_name → job_id
+        entry: VaultConfigEntry = hass.config_entries.async_entries(DOMAIN)[0]  # type: ignore[assignment]
+        jobs = entry.runtime_data.coordinator.data.jobs
+
+        if job_name is not None and job_id is None:
+            matched = [j for j in jobs if j.name.lower() == job_name.lower()]
+            if not matched:
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN,
+                    translation_key="invalid_job_id",
+                )
+            job_id = matched[0].id
+
+        # Validate job_id exists in loaded jobs
+        if not any(job.id == job_id for job in jobs):
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_job_id",
+            )
+
+        # At this point job_id is guaranteed to be set
+        assert job_id is not None
+
+        try:
+            await client.async_run_job(job_id)
+        except VaultConnectionError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="cannot_connect",
+            ) from err
+        except VaultApiError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="api_error",
+            ) from err
+
+    async def _handle_restore(call: ServiceCall) -> None:
+        """Handle vault.restore service call."""
+        client = _get_client_from_entry(hass, call)
+        payload: dict[str, Any] = {
+            "restore_point_id": call.data["restore_point_id"],
+            "item_name": call.data["item_name"],
+            "item_type": call.data["item_type"],
+        }
+        if "passphrase" in call.data:
+            payload["passphrase"] = call.data["passphrase"]
+        if "destination" in call.data:
+            payload["destination"] = call.data["destination"]
+        try:
+            await client.async_restore(call.data["job_id"], payload)
+        except VaultConnectionError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="cannot_connect",
+            ) from err
+        except VaultApiError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="api_error",
+            ) from err
+
+    async def _handle_test_storage(call: ServiceCall) -> None:
+        """Handle vault.test_storage service call."""
+        client = _get_client_from_entry(hass, call)
+        try:
+            result = await client.async_test_storage(call.data["storage_id"])
+        except VaultConnectionError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="cannot_connect",
+            ) from err
+        except VaultApiError as err:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="api_error",
+            ) from err
+        if not result.success:
+            LOGGER.warning("Storage test failed: %s", result.error)
+
+    hass.services.async_register(DOMAIN, SERVICE_RUN_BACKUP, _handle_run_backup, schema=SCHEMA_RUN_BACKUP)
+    hass.services.async_register(DOMAIN, SERVICE_RESTORE, _handle_restore, schema=SCHEMA_RESTORE)
+    hass.services.async_register(DOMAIN, SERVICE_TEST_STORAGE, _handle_test_storage, schema=SCHEMA_TEST_STORAGE)
+
     return True
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: VaultConfigEntry,
-) -> bool:
-    """
-    Set up this integration using UI.
+async def async_setup_entry(hass: HomeAssistant, entry: VaultConfigEntry) -> bool:
+    """Set up Vault from a config entry."""
+    host: str = entry.data[CONF_HOST]
+    port: int = entry.data.get(CONF_PORT, DEFAULT_PORT)
+    api_key: str | None = entry.data.get(CONF_API_KEY)
+    tls: bool = entry.data.get(CONF_TLS, False)
+    session = async_get_clientsession(hass)
 
-    This is called when a config entry is loaded. It:
-    1. Creates the API client with credentials from the config entry
-    2. Initializes the DataUpdateCoordinator for data fetching
-    3. Performs the first data refresh
-    4. Sets up all platforms (sensors, switches, etc.)
-    5. Registers services
-    6. Sets up reload listener for config changes
+    client = VaultApiClient(host=host, port=port, session=session, api_key=api_key, tls=tls)
+    websocket = VaultWebSocketClient(host=host, port=port, session=session, logger=LOGGER, api_key=api_key, tls=tls)
+    coordinator = VaultDataUpdateCoordinator(hass, client)
 
-    Data flow in this integration:
-    1. User enters username/password in config flow (config_flow.py)
-    2. Credentials stored in entry.data[CONF_USERNAME/CONF_PASSWORD]
-    3. API Client initialized with credentials (api/client.py)
-    4. Coordinator fetches data using authenticated client (coordinator/base.py)
-    5. Entities access data via self.coordinator.data (sensor/, binary_sensor/, etc.)
+    await coordinator.async_config_entry_first_refresh()
+    await websocket.async_connect()
 
-    This pattern ensures credentials from setup flow are used throughout
-    the integration's lifecycle for API communication.
+    # Initialize progress tracking store
+    hass.data.setdefault(DOMAIN, {})
+    hass.data[DOMAIN].setdefault("progress", {})
 
-    Args:
-        hass: The Home Assistant instance.
-        entry: The config entry being set up.
+    # Fire HA events from WebSocket messages and track progress
+    def _on_ws_event(event: WebSocketEvent) -> None:
+        ha_event = VaultWebSocketClient.get_ha_event_type(event.type)
+        if ha_event:
+            hass.bus.async_fire(ha_event, event.model_dump(exclude_none=True))
 
-    Returns:
-        True if setup was successful.
+        # Track backup progress from WebSocket events
+        job_id = event.job_id
+        if job_id is not None:
+            if event.type == "backup_progress":
+                hass.data[DOMAIN]["progress"][job_id] = event.percent or 0
+            elif event.type == "job_run_completed":
+                hass.data[DOMAIN]["progress"].pop(job_id, None)
+            elif event.type == "job_run_started":
+                hass.data[DOMAIN]["progress"][job_id] = 0
 
-    For more information:
-    https://developers.home-assistant.io/docs/config_entries_index/#setting-up-an-entry
-    """
-    # Initialize client first
-    client = VaultApiClient(
-        username=entry.data[CONF_USERNAME],  # From config flow setup
-        password=entry.data[CONF_PASSWORD],  # From config flow setup
-        session=async_get_clientsession(hass),
-    )
+    websocket.register_listener(_on_ws_event)
 
-    # Initialize coordinator with config_entry
-    coordinator = VaultDataUpdateCoordinator(
-        hass=hass,
-        logger=LOGGER,
-        name=DOMAIN,
-        config_entry=entry,
-        update_interval=timedelta(hours=1),
-        always_update=False,  # Only update entities when data actually changes
-    )
-
-    # Store runtime data
     entry.runtime_data = VaultData(
         client=client,
-        integration=async_get_loaded_integration(hass, entry.domain),
         coordinator=coordinator,
+        websocket=websocket,
     )
 
-    # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
-    await coordinator.async_config_entry_first_refresh()
-
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
-
     return True
 
 
-async def async_unload_entry(
-    hass: HomeAssistant,
-    entry: VaultConfigEntry,
-) -> bool:
-    """
-    Unload a config entry.
-
-    This is called when the integration is being removed or reloaded.
-    It ensures proper cleanup of:
-    - All platform entities
-    - Registered services
-    - Update listeners
-
-    Args:
-        hass: The Home Assistant instance.
-        entry: The config entry being unloaded.
-
-    Returns:
-        True if unload was successful.
-
-    For more information:
-    https://developers.home-assistant.io/docs/config_entries_index/#unloading-entries
-    """
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-
-
-async def async_reload_entry(
-    hass: HomeAssistant,
-    entry: VaultConfigEntry,
-) -> None:
-    """
-    Reload config entry.
-
-    This is called when the integration configuration or options have changed.
-    It unloads and then reloads the integration with the new configuration.
-
-    Args:
-        hass: The Home Assistant instance.
-        entry: The config entry being reloaded.
-
-    For more information:
-    https://developers.home-assistant.io/docs/config_entries_index/#reloading-entries
-    """
-    await hass.config_entries.async_reload(entry.entry_id)
+async def async_unload_entry(hass: HomeAssistant, entry: VaultConfigEntry) -> bool:
+    """Unload a Vault config entry."""
+    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
+        await entry.runtime_data.websocket.async_disconnect()
+        # Clean up progress tracking if no more loaded entries
+        remaining = [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]
+        if not remaining:
+            hass.data.pop(DOMAIN, None)
+    return unload_ok

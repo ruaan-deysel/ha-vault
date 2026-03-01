@@ -1,30 +1,80 @@
-# yaml-language-server: $schema=../../schemas/yaml/services_schema.yaml
-# Describes the format for available services for vault
-
-example_action:
-  name: Example Action
-  description: Execute an example action (dummy service for demonstration)
+run_backup:
+  name: Run Backup
+  description: Trigger an immediate backup run for a Vault job.
   fields:
-    action_type:
-      name: Action Type
-      description: The type of action to perform
+    job_id:
+      name: Job ID
+      description: The Vault backup job ID to run. Provide either job_id or job_name.
       required: false
-      default: default
-      example: "update"
       selector:
-        select:
-          options:
-            - "default"
-            - "update"
-            - "reset"
-    target_value:
-      name: Target Value
-      description: The target value for the action
+        number:
+          min: 1
+          mode: box
+    job_name:
+      name: Job Name
+      description: The name of the Vault backup job to run. Provide either job_id or job_name.
       required: false
-      example: "new_value"
       selector:
         text:
 
-reload_data:
-  name: Reload Data
-  description: Force a refresh of the integration data from the API
+restore:
+  name: Restore Backup
+  description: Restore an item from a Vault backup restore point.
+  fields:
+    job_id:
+      name: Job ID
+      description: The Vault backup job ID that created the restore point.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    restore_point_id:
+      name: Restore Point ID
+      description: The ID of the restore point to restore from.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box
+    item_name:
+      name: Item Name
+      description: Name of the item to restore (container name, VM name, or folder).
+      required: true
+      selector:
+        text:
+    item_type:
+      name: Item Type
+      description: Type of the item to restore.
+      required: true
+      selector:
+        select:
+          options:
+            - container
+            - vm
+            - folder
+    passphrase:
+      name: Encryption Passphrase
+      description: Required if the backup was created with age encryption.
+      required: false
+      selector:
+        text:
+    destination:
+      name: Destination Override
+      description: Optional override for restore destination path.
+      required: false
+      selector:
+        text:
+
+test_storage:
+  name: Test Storage Connection
+  description: Test connectivity to a Vault storage destination.
+  fields:
+    storage_id:
+      name: Storage Destination ID
+      description: The ID of the storage destination to test.
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box

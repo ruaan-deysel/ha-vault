@@ -53,6 +53,7 @@ filterwarnings = [
     "error",
     # Ignore specific warnings from third-party libraries as needed
     # "ignore:.*custom_components.* is using deprecated.*:DeprecationWarning",
+    "ignore:Setting custom ClientSession.*:DeprecationWarning",
 ]
 
 [tool.coverage.run]

@@ -1,32 +1,20 @@
-"""
-API package for vault.
+"""Vault API client package.
 
-Architecture:
-    Three-layer data flow: Entities → Coordinator → API Client.
-    Only the coordinator should call the API client. Entities must never
-    import or call the API client directly.
-
-Exception hierarchy:
-    VaultApiClientError (base)
-    ├── VaultApiClientCommunicationError (network/timeout)
-    └── VaultApiClientAuthenticationError (401/403)
-
-Coordinator exception mapping:
-    ApiClientAuthenticationError → ConfigEntryAuthFailed (triggers reauth)
-    ApiClientCommunicationError → UpdateFailed (auto-retry)
-    ApiClientError             → UpdateFailed (auto-retry)
+Provides:
+- VaultApiClient: Async REST client for all Vault endpoints.
+- VaultWebSocketClient: Persistent WebSocket connection for real-time events.
+- Pydantic v2 models for typed API responses.
+- Exception hierarchy for structured error handling.
 """
 
-from .client import (
-    VaultApiClient,
-    VaultApiClientAuthenticationError,
-    VaultApiClientCommunicationError,
-    VaultApiClientError,
-)
+from .client import VaultApiClient
+from .exceptions import VaultApiError, VaultAuthenticationError, VaultConnectionError
+from .websocket import VaultWebSocketClient
 
 __all__ = [
     "VaultApiClient",
-    "VaultApiClientAuthenticationError",
-    "VaultApiClientCommunicationError",
-    "VaultApiClientError",
+    "VaultApiError",
+    "VaultAuthenticationError",
+    "VaultConnectionError",
+    "VaultWebSocketClient",
 ]

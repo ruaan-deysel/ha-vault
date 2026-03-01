@@ -1,16 +1,18 @@
-"""Constants for vault."""
+"""Constants for the Vault integration."""
 
 from logging import Logger, getLogger
 
 LOGGER: Logger = getLogger(__package__)
 
-# Integration metadata
 DOMAIN = "vault"
-ATTRIBUTION = "Data provided by http://jsonplaceholder.typicode.com/"
 
-# Platform parallel updates - applied to all platforms
-PARALLEL_UPDATES = 1
+# Config entry keys
+CONF_HOST = "host"
+CONF_PORT = "port"
+CONF_API_KEY = "api_key"
+CONF_TLS = "tls"
 
-# Default configuration values
-DEFAULT_UPDATE_INTERVAL_HOURS = 1
-DEFAULT_ENABLE_DEBUGGING = False
+# Defaults
+DEFAULT_PORT = 24085
+DEFAULT_UPDATE_INTERVAL_SECONDS = 60
+ACTIVE_UPDATE_INTERVAL_SECONDS = 10

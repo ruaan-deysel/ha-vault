@@ -2,152 +2,199 @@
   "config": {
     "step": {
       "user": {
-        "description": "If you need help with the configuration have a look at the [documentation]({documentation_url}).",
+        "title": "Connect to Vault",
+        "description": "Enter the host and port of your Vault backup manager instance.",
         "data": {
-          "username": "Username",
-          "password": "Password"
+          "host": "Host",
+          "port": "Port",
+          "tls": "Use TLS (HTTPS)"
+        },
+        "data_description": {
+          "host": "IP address or hostname of the Unraid server running Vault (e.g. 192.168.20.21)",
+          "port": "Port number for the Vault API (default: 24085)",
+          "tls": "Enable to use HTTPS/WSS for encrypted connections"
         }
       },
-      "reconfigure": {
-        "description": "Update the credentials for this integration.",
+      "auth": {
+        "title": "Authentication Required",
+        "description": "This Vault instance requires an API key. Enter your API key below.",
         "data": {
-          "username": "Username",
-          "password": "Password"
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "api_key": "The API key configured in your Vault instance"
         }
       },
       "reauth_confirm": {
-        "title": "Reauthenticate Integration",
-        "description": "The credentials for {username} are no longer valid. Please provide updated credentials to restore access.",
+        "title": "Re-authenticate Vault",
+        "description": "The API key for this Vault instance is no longer valid. Please enter a new API key.",
         "data": {
-          "username": "Username",
-          "password": "Password"
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "api_key": "The new API key for your Vault instance"
+        }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Vault",
+        "description": "Update the connection details of your Vault instance.",
+        "data": {
+          "host": "Host",
+          "port": "Port",
+          "tls": "Use TLS (HTTPS)",
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "host": "IP address or hostname of the Unraid server running Vault",
+          "port": "Port number for the Vault API",
+          "tls": "Enable to use HTTPS/WSS for encrypted connections",
+          "api_key": "API key (leave empty if authentication is not required)"
         }
       }
     },
     "error": {
-      "auth": "Username/Password is wrong.",
-      "connection": "Unable to connect to the server.",
-      "unknown": "Unknown error occurred."
+      "cannot_connect": "Unable to connect to Vault. Please check the host and port.",
+      "invalid_auth": "Invalid API key. Please check your credentials.",
+      "unknown": "An unexpected error occurred."
     },
     "abort": {
-      "already_configured": "This entry is already configured."
+      "already_configured": "This Vault instance is already configured.",
+      "reauth_successful": "Re-authentication was successful."
     }
   },
-  "options": {
-    "step": {
-      "init": {
-        "title": "Configure Integration Options",
-        "description": "Customize how this integration operates.",
-        "data": {
-          "update_interval_hours": "Update interval (hours)",
-          "enable_debugging": "Enable debug logging",
-          "custom_icon": "Custom icon (optional)"
+  "entity": {
+    "sensor": {
+      "vault_status": {
+        "name": "Status"
+      },
+      "vault_version": {
+        "name": "Version"
+      },
+      "jobs_total": {
+        "name": "Total jobs"
+      },
+      "jobs_enabled": {
+        "name": "Enabled jobs"
+      },
+      "encryption_status": {
+        "name": "Encryption status"
+      },
+      "job_status": {
+        "name": "Status"
+      },
+      "job_last_run": {
+        "name": "Last run"
+      },
+      "job_last_size": {
+        "name": "Last size"
+      },
+      "job_items_backed_up": {
+        "name": "Items backed up"
+      },
+      "job_items_failed": {
+        "name": "Items failed"
+      },
+      "job_restore_points": {
+        "name": "Restore points"
+      },
+      "job_progress": {
+        "name": "Progress"
+      },
+      "storage_name": {
+        "name": "Storage name"
+      },
+      "storage_type": {
+        "name": "Storage type"
+      }
+    },
+    "binary_sensor": {
+      "vault_online": {
+        "name": "Online"
+      },
+      "job_running": {
+        "name": "Running"
+      },
+      "job_last_success": {
+        "name": "Last run successful"
+      }
+    },
+    "button": {
+      "run_backup": {
+        "name": "Run backup"
+      }
+    }
+  },
+  "services": {
+    "run_backup": {
+      "name": "Run backup",
+      "description": "Trigger an immediate backup run for a Vault job.",
+      "fields": {
+        "job_id": {
+          "name": "Job ID",
+          "description": "The Vault backup job ID to run."
         },
-        "data_description": {
-          "update_interval_hours": "How often to refresh data from the API (0.25 to 24 hours)",
-          "enable_debugging": "Enable detailed debug logging for troubleshooting",
-          "custom_icon": "Override the default icon for entities (optional)"
+        "job_name": {
+          "name": "Job Name",
+          "description": "The name of the Vault backup job to run. Provide either Job ID or Job Name."
+        }
+      }
+    },
+    "restore": {
+      "name": "Restore backup",
+      "description": "Restore an item from a Vault backup restore point.",
+      "fields": {
+        "job_id": {
+          "name": "Job ID",
+          "description": "The Vault backup job ID that created the restore point."
+        },
+        "restore_point_id": {
+          "name": "Restore Point ID",
+          "description": "The ID of the restore point to restore from."
+        },
+        "item_name": {
+          "name": "Item Name",
+          "description": "Name of the item to restore."
+        },
+        "item_type": {
+          "name": "Item Type",
+          "description": "Type of the item to restore."
+        },
+        "passphrase": {
+          "name": "Encryption Passphrase",
+          "description": "Required if the backup was created with age encryption."
+        },
+        "destination": {
+          "name": "Destination Override",
+          "description": "Optional override for restore destination path."
+        }
+      }
+    },
+    "test_storage": {
+      "name": "Test storage connection",
+      "description": "Test connectivity to a Vault storage destination.",
+      "fields": {
+        "storage_id": {
+          "name": "Storage Destination ID",
+          "description": "The ID of the storage destination to test."
         }
       }
     }
   },
   "exceptions": {
-    "authentication_failed": {
-      "message": "Authentication failed during data update."
+    "cannot_connect": {
+      "message": "Unable to connect to Vault. Please check the host and port."
     },
-    "update_failed": {
-      "message": "Failed to update data from the server."
+    "api_error": {
+      "message": "An error occurred communicating with the Vault API."
     },
-    "switch_turn_on_failed": {
-      "message": "Failed to turn on the switch."
+    "invalid_job_id": {
+      "message": "No backup job found with the specified ID."
     },
-    "switch_turn_off_failed": {
-      "message": "Failed to turn off the switch."
+    "storage_test_failed": {
+      "message": "Storage connection test failed: {error}"
     },
-    "number_set_failed": {
-      "message": "Failed to set the target value."
-    }
-  },
-  "entity": {
-    "sensor": {
-      "air_quality_index": {
-        "name": "Air Quality Index"
-      },
-      "pm25": {
-        "name": "PM2.5"
-      },
-      "filter_life": {
-        "name": "Filter Life Remaining"
-      },
-      "runtime": {
-        "name": "Total Runtime"
-      }
-    },
-    "binary_sensor": {
-      "api_connectivity": {
-        "name": "API Connection"
-      },
-      "filter_replacement": {
-        "name": "Filter Replacement Needed"
-      }
-    },
-    "switch": {
-      "child_lock": {
-        "name": "Child Lock"
-      },
-      "led_display": {
-        "name": "LED Display"
-      }
-    },
-    "select": {
-      "fan_speed": {
-        "name": "Fan Speed",
-        "state": {
-          "low": "Low",
-          "medium": "Medium",
-          "high": "High",
-          "auto": "Auto"
-        }
-      }
-    },
-    "number": {
-      "target_humidity": {
-        "name": "Target Humidity"
-      }
-    },
-    "button": {
-      "reset_filter": {
-        "name": "Reset Filter Timer"
-      }
-    },
-    "fan": {
-      "air_purifier": {
-        "name": "Air Purifier"
-      }
-    }
-  },
-  "issues": {
-    "deprecated_api_endpoint": {
-      "title": "Deprecated API Endpoint",
-      "fix_flow": {
-        "step": {
-          "init": {
-            "title": "Update API Endpoint",
-            "description": "Your device is using API version {api_version} which is deprecated. Please update to v2 for continued support and new features.\n\nClick Submit to update your device to use the new API endpoint (v2). This will reload the integration."
-          }
-        }
-      }
-    },
-    "missing_configuration": {
-      "title": "Missing Configuration",
-      "fix_flow": {
-        "step": {
-          "init": {
-            "title": "Acknowledge Configuration Issue",
-            "description": "Some configuration options are missing or invalid. Please reconfigure the integration to ensure proper operation.\n\nClick Submit to acknowledge this issue. You may need to reconfigure the integration if problems persist."
-          }
-        }
-      }
+    "restore_failed": {
+      "message": "Failed to initiate restore operation."
     }
   }
 }

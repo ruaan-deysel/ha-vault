@@ -1,237 +1,238 @@
-"""
-API Client for vault.
-
-This module provides the API client for communicating with external services.
-It demonstrates proper error handling, authentication patterns, and async operations.
-
-For more information on creating API clients:
-https://developers.home-assistant.io/docs/api_lib_index
-"""
+"""Async API client for the Vault backup manager."""
 
 from __future__ import annotations
 
 import asyncio
-import socket
 from typing import Any
 
 import aiohttp
 
+from .exceptions import VaultApiError, VaultAuthenticationError, VaultConnectionError
+from .models import (
+    ActivityEntry,
+    AuthStatus,
+    BackupJob,
+    EncryptionStatus,
+    HealthStatus,
+    JobDetail,
+    JobRun,
+    RestorePoint,
+    Settings,
+    StorageDestination,
+    StorageTestResult,
+)
 
-class VaultApiClientError(Exception):
-    """Base exception to indicate a general API error."""
+API_BASE = "/api/v1"
 
-
-class VaultApiClientCommunicationError(
-    VaultApiClientError,
-):
-    """Exception to indicate a communication error with the API."""
-
-
-class VaultApiClientAuthenticationError(
-    VaultApiClientError,
-):
-    """Exception to indicate an authentication error with the API."""
-
-
-def _verify_response_or_raise(response: aiohttp.ClientResponse) -> None:
-    """
-    Verify that the API response is valid.
-
-    Raises appropriate exceptions for authentication and HTTP errors.
-
-    Args:
-        response: The aiohttp ClientResponse to verify.
-
-    Raises:
-        VaultApiClientAuthenticationError: For 401/403 errors.
-        aiohttp.ClientResponseError: For other HTTP errors.
-
-    """
-    if response.status in (401, 403):
-        msg = "Invalid credentials"
-        raise VaultApiClientAuthenticationError(
-            msg,
-        )
-    response.raise_for_status()
+# Endpoints that never require authentication
+_PUBLIC_PATHS = frozenset(
+    {
+        f"{API_BASE}/health",
+        f"{API_BASE}/ping",
+        f"{API_BASE}/auth/status",
+    }
+)
 
 
 class VaultApiClient:
-    """
-    API Client for Smart Air Purifier integration.
+    """Async API client for Vault on Unraid.
 
-    This client demonstrates authentication and API communication patterns
-    for Home Assistant integrations. It handles HTTP requests, error handling,
-    and credential management.
-
-    The username and password are stored and would be used for:
-    - HTTP Basic Auth headers
-    - OAuth token exchange
-    - API key generation
-    - Session token management
-
-    Note: JSONPlaceholder is used as a demo endpoint and doesn't require auth.
-    In production, replace with your actual API endpoint that validates credentials.
-
-    For more information on API clients:
-    https://developers.home-assistant.io/docs/api_lib_index
-
-    Attributes:
-        _username: The username for API authentication.
-        _password: The password for API authentication.
-        _session: The aiohttp ClientSession for making requests.
-
+    Wraps all REST endpoints at /api/v1/*.
+    Accepts an aiohttp.ClientSession from Home Assistant — never creates its own.
     """
 
     def __init__(
         self,
-        username: str,
-        password: str,
+        host: str,
+        port: int,
         session: aiohttp.ClientSession,
+        *,
+        api_key: str | None = None,
+        tls: bool = False,
     ) -> None:
-        """
-        Initialize the API Client with credentials.
+        """Initialize the API client.
 
         Args:
-            username: The username for authentication from config flow.
-            password: The password for authentication from config flow.
-            session: The aiohttp ClientSession to use for requests.
-
+            host: Hostname or IP of the Vault instance.
+            port: Port number of the Vault API.
+            session: aiohttp session provided by Home Assistant.
+            api_key: Optional API key for authentication.
+            tls: Whether to use HTTPS instead of HTTP.
         """
-        self._username = username
-        self._password = password
+        scheme = "https" if tls else "http"
+        self._base_url = f"{scheme}://{host}:{port}"
         self._session = session
+        self._api_key = api_key
 
-    async def async_get_data(self) -> Any:
+    @property
+    def base_url(self) -> str:
+        """Return the base URL of the Vault instance."""
+        return self._base_url
+
+    # --- Auth ---
+
+    async def async_get_auth_status(self) -> AuthStatus:
+        """GET /api/v1/auth/status — check if auth is required (public endpoint)."""
+        data = await self._request("GET", f"{API_BASE}/auth/status")
+        return AuthStatus.model_validate(data)
+
+    # --- Health / Ping ---
+
+    async def async_get_health(self) -> HealthStatus:
+        """GET /api/v1/health — health check + version."""
+        data = await self._request("GET", f"{API_BASE}/health")
+        return HealthStatus.model_validate(data)
+
+    async def async_ping(self) -> bool:
+        """GET /api/v1/ping — fast liveness check.
+
+        Returns True if the server responds 200.
         """
-        Get data from the API.
+        try:
+            await self._request("GET", f"{API_BASE}/ping", expect_json=False)
+        except VaultApiError:
+            return False
+        return True
 
-        This method fetches the current state and sensor data from the device.
-        It demonstrates where credentials would be used in production:
-        - Authorization headers (Basic Auth, Bearer Token)
-        - Query parameters (username, api_key)
-        - Session cookies (after login)
+    # --- Settings ---
 
-        Returns:
-            A dictionary containing the device data.
+    async def async_get_settings(self) -> Settings:
+        """GET /api/v1/settings — retrieve current settings."""
+        data = await self._request("GET", f"{API_BASE}/settings")
+        return Settings.model_validate(data)
 
-        Raises:
-            VaultApiClientAuthenticationError: If authentication fails.
-            VaultApiClientCommunicationError: If communication fails.
-            VaultApiClientError: For other API errors.
+    async def async_update_settings(self, payload: dict[str, Any]) -> Settings:
+        """PUT /api/v1/settings — update settings."""
+        data = await self._request("PUT", f"{API_BASE}/settings", json_data=payload)
+        return Settings.model_validate(data)
 
-        """
-        # In production: Use username/password for authentication
-        # Example patterns:
-        # 1. Basic Auth: auth=aiohttp.BasicAuth(self._username, self._password)
-        # 2. Token: headers={"Authorization": f"Bearer {self._get_token()}"}
-        # 3. API Key: params={"username": self._username, "key": self._password}
+    async def async_get_encryption_status(self) -> EncryptionStatus:
+        """GET /api/v1/settings/encryption — encryption status."""
+        data = await self._request("GET", f"{API_BASE}/settings/encryption")
+        return EncryptionStatus.model_validate(data)
 
-        return await self._api_wrapper(
-            method="get",
-            url="https://jsonplaceholder.typicode.com/posts/1",
-            # For demo purposes with JSONPlaceholder (no auth required)
-            # In production, add authentication here
+    # --- Storage ---
+
+    async def async_get_storage(self) -> list[StorageDestination]:
+        """GET /api/v1/storage — list storage destinations."""
+        data = await self._request("GET", f"{API_BASE}/storage")
+        if isinstance(data, list):
+            return [StorageDestination.model_validate(item) for item in data]
+        return []
+
+    async def async_test_storage(self, storage_id: int) -> StorageTestResult:
+        """POST /api/v1/storage/{id}/test — test storage connection."""
+        data = await self._request("POST", f"{API_BASE}/storage/{storage_id}/test")
+        return StorageTestResult.model_validate(data)
+
+    # --- Jobs ---
+
+    async def async_get_jobs(self) -> list[BackupJob]:
+        """GET /api/v1/jobs — list all backup jobs."""
+        data = await self._request("GET", f"{API_BASE}/jobs")
+        if isinstance(data, list):
+            return [BackupJob.model_validate(item) for item in data]
+        return []
+
+    async def async_get_job(self, job_id: int) -> JobDetail:
+        """GET /api/v1/jobs/{id} — get job details with items."""
+        data = await self._request("GET", f"{API_BASE}/jobs/{job_id}")
+        return JobDetail.model_validate(data)
+
+    async def async_run_job(self, job_id: int) -> dict[str, Any]:
+        """POST /api/v1/jobs/{id}/run — trigger an immediate backup."""
+        return await self._request("POST", f"{API_BASE}/jobs/{job_id}/run")  # type: ignore[return-value]
+
+    async def async_get_job_history(self, job_id: int, *, limit: int = 50) -> list[JobRun]:
+        """GET /api/v1/jobs/{id}/history — job run history."""
+        data = await self._request("GET", f"{API_BASE}/jobs/{job_id}/history?limit={limit}")
+        if isinstance(data, list):
+            return [JobRun.model_validate(item) for item in data]
+        return []
+
+    async def async_get_restore_points(self, job_id: int) -> list[RestorePoint]:
+        """GET /api/v1/jobs/{id}/restore-points — list restore points."""
+        data = await self._request("GET", f"{API_BASE}/jobs/{job_id}/restore-points")
+        if isinstance(data, list):
+            return [RestorePoint.model_validate(item) for item in data]
+        return []
+
+    async def async_restore(self, job_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        """POST /api/v1/jobs/{id}/restore — trigger a restore."""
+        return await self._request(  # type: ignore[return-value]
+            "POST", f"{API_BASE}/jobs/{job_id}/restore", json_data=payload
         )
 
-    async def async_set_fan_speed(self, speed: str) -> Any:
-        """
-        Set the fan speed on the device.
+    # --- Activity ---
 
-        Args:
-            speed: The fan speed to set (low, medium, high, auto).
+    async def async_get_activity(self) -> list[ActivityEntry]:
+        """GET /api/v1/activity — recent activity log."""
+        data = await self._request("GET", f"{API_BASE}/activity")
+        if isinstance(data, list):
+            return [ActivityEntry.model_validate(item) for item in data]
+        return []
 
-        Returns:
-            A dictionary containing the API response.
+    # --- Internal ---
 
-        Raises:
-            VaultApiClientAuthenticationError: If authentication fails.
-            VaultApiClientCommunicationError: If communication fails.
-            VaultApiClientError: For other API errors.
-
-        """
-        # In production: Send authenticated request to change fan speed
-        return await self._api_wrapper(
-            method="patch",
-            url="https://jsonplaceholder.typicode.com/posts/1",
-            data={"fan_speed": speed, "user": self._username},
-            headers={"Content-type": "application/json; charset=UTF-8"},
-        )
-
-    async def async_set_target_humidity(self, humidity: int) -> Any:
-        """
-        Set the target humidity on the device.
-
-        Args:
-            humidity: The target humidity percentage (30-80).
-
-        Returns:
-            A dictionary containing the API response.
-
-        Raises:
-            VaultApiClientAuthenticationError: If authentication fails.
-            VaultApiClientCommunicationError: If communication fails.
-            VaultApiClientError: For other API errors.
-
-        """
-        # In production: Send authenticated request to change humidity setting
-        return await self._api_wrapper(
-            method="patch",
-            url="https://jsonplaceholder.typicode.com/posts/1",
-            data={"target_humidity": humidity, "user": self._username},
-            headers={"Content-type": "application/json; charset=UTF-8"},
-        )
-
-    async def _api_wrapper(
+    async def _request(
         self,
         method: str,
-        url: str,
-        data: dict | None = None,
-        headers: dict | None = None,
+        path: str,
+        *,
+        json_data: dict[str, Any] | None = None,
+        expect_json: bool = True,
     ) -> Any:
-        """
-        Wrapper for API requests with error handling.
-
-        This method handles all HTTP requests and translates exceptions
-        into integration-specific exceptions.
+        """Execute an HTTP request against the Vault API.
 
         Args:
-            method: The HTTP method (get, post, patch, etc.).
-            url: The URL to request.
-            data: Optional data to send in the request body.
-            headers: Optional headers to include in the request.
+            method: HTTP method (GET, POST, PUT, etc.).
+            path: URL path (appended to base_url).
+            json_data: Optional JSON body payload.
+            expect_json: Whether to parse the response as JSON.
 
         Returns:
-            The JSON response from the API.
+            Parsed JSON response, or the raw response text.
 
         Raises:
-            VaultApiClientAuthenticationError: If authentication fails.
-            VaultApiClientCommunicationError: If communication fails.
-            VaultApiClientError: For other API errors.
-
+            VaultAuthenticationError: On 401/403 responses.
+            VaultConnectionError: On network/timeout errors.
+            VaultApiError: On other HTTP or parsing errors.
         """
+        url = f"{self._base_url}{path}"
+
+        # Build headers — add auth for non-public endpoints
+        headers: dict[str, str] = {}
+        if self._api_key and path not in _PUBLIC_PATHS:
+            headers["Authorization"] = f"Bearer {self._api_key}"
+
         try:
             async with asyncio.timeout(10):
                 response = await self._session.request(
-                    method=method,
-                    url=url,
-                    headers=headers,
-                    json=data,
+                    method,
+                    url,
+                    json=json_data,
+                    headers=headers or None,
                 )
-                _verify_response_or_raise(response)
-                return await response.json()
+        except TimeoutError as err:
+            msg = f"Timeout connecting to Vault at {self._base_url}"
+            raise VaultConnectionError(msg) from err
+        except aiohttp.ClientError as err:
+            msg = f"Error connecting to Vault at {self._base_url}: {err}"
+            raise VaultConnectionError(msg) from err
 
-        except TimeoutError as exception:
-            msg = f"Timeout error fetching information - {exception}"
-            raise VaultApiClientCommunicationError(
-                msg,
-            ) from exception
-        except (aiohttp.ClientError, socket.gaierror) as exception:
-            msg = f"Error fetching information - {exception}"
-            raise VaultApiClientCommunicationError(
-                msg,
-            ) from exception
-        except Exception as exception:
-            msg = f"Something really wrong happened! - {exception}"
-            raise VaultApiClientError(
-                msg,
-            ) from exception
+        if response.status in (401, 403):
+            msg = f"Authentication failed ({response.status})"
+            raise VaultAuthenticationError(msg)
+
+        if response.status >= 400:
+            msg = f"Vault API error ({response.status}): {await response.text()}"
+            raise VaultApiError(msg)
+
+        if not expect_json:
+            return await response.text()
+
+        try:
+            return await response.json()
+        except (aiohttp.ContentTypeError, ValueError) as err:
+            msg = f"Invalid JSON response from Vault: {err}"
+            raise VaultApiError(msg) from err
