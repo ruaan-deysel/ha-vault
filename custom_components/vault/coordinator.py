@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -55,6 +56,18 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
         """Return normalized lowercase status text for enum/string values."""
         return str(getattr(status, "value", status)).lower()
 
+    async def _fetch_job_data(self, job_id: int, semaphore: asyncio.Semaphore) -> tuple[int, list, int]:
+        """Fetch latest runs and restore point count for one job."""
+        async with semaphore:
+            try:
+                runs = await self.client.async_get_job_history(job_id, limit=1)
+                restore_points = await self.client.async_get_restore_points(job_id)
+            except VaultApiError as err:
+                LOGGER.warning("Failed fetching per-job data for job_id=%s: %s", job_id, err)
+                return job_id, [], 0
+
+        return job_id, runs, len(restore_points)
+
     async def _async_update_data(self) -> VaultApiData:
         """Fetch data from all Vault API endpoints.
 
@@ -72,14 +85,11 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
             jobs = await self.client.async_get_jobs()
             activity = await self.client.async_get_activity()
 
-            # Fetch most recent run + restore points per job
-            job_runs: dict[int, list] = {}
-            restore_point_counts: dict[int, int] = {}
-            for job in jobs:
-                runs = await self.client.async_get_job_history(job.id, limit=1)
-                job_runs[job.id] = runs
-                rps = await self.client.async_get_restore_points(job.id)
-                restore_point_counts[job.id] = len(rps)
+            # Fetch most recent run + restore points per job (bounded parallelism)
+            semaphore = asyncio.Semaphore(5)
+            results = await asyncio.gather(*(self._fetch_job_data(job.id, semaphore) for job in jobs))
+            job_runs: dict[int, list] = {job_id: runs for job_id, runs, _ in results}
+            restore_point_counts: dict[int, int] = {job_id: rp_count for job_id, _, rp_count in results}
 
         except VaultConnectionError as err:
             raise UpdateFailed(f"Error communicating with Vault: {err}") from err

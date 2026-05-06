@@ -6,181 +6,70 @@ This document describes the technical architecture of the Vault custom component
 
 ```text
 custom_components/vault/
-├── __init__.py              # Integration setup and unload
-├── config_flow.py           # Config flow entry point
-├── const.py                 # Constants and configuration keys
-├── coordinator/             # Data update coordinator package
-│   ├── __init__.py          # Exports VaultDataUpdateCoordinator
-│   ├── base.py              # Main coordinator class
-│   ├── data_processing.py   # Data validation and transformation
-│   ├── error_handling.py    # Error recovery and retry logic
-│   └── listeners.py         # Entity callbacks and event listeners
-├── data.py                  # Data classes and type definitions
-├── diagnostics.py           # Diagnostic data for troubleshooting
-├── entity/                  # Base entity package
-│   ├── __init__.py          # Exports VaultEntity
-│   └── base.py              # Base entity class implementation
+├── __init__.py              # Integration setup/unload + service registration
+├── binary_sensor.py         # Connectivity + per-job boolean state entities
+├── button.py                # Per-job run-now button entities
+├── config_flow.py           # User setup, auth, reauth, reconfigure
+├── const.py                 # Domain/constants
+├── coordinator.py           # VaultDataUpdateCoordinator + runtime data container
+├── diagnostics.py           # Diagnostics payload with redaction
+├── entity.py                # Shared VaultEntity base class
 ├── manifest.json            # Integration metadata
-├── repairs.py               # Repair flows for fixing issues
-├── services.yaml            # Service action definitions (legacy filename)
-├── api/                     # External API communication
+├── repairs.py               # Repairs flow scaffolding
+├── sensor.py                # Global/per-job/per-storage sensors
+├── services.yaml            # Service definitions (run_backup/restore/test_storage)
+├── api/
 │   ├── __init__.py
-│   └── client.py            # API client implementation
-├── config_flow_handler/     # Config flow implementation
-│   ├── __init__.py          # Package exports
-│   ├── handler.py           # Backward compatibility wrapper
-│   ├── config_flow.py       # Main config flow (user, reauth, reconfigure)
-│   ├── options_flow.py      # Options flow
-│   ├── subentry_flow.py     # Subentry flow template
-│   ├── schemas/             # Voluptuous schemas
-│   │   ├── __init__.py      # Schema exports
-│   │   ├── config.py        # Config flow schemas
-│   │   └── options.py       # Options flow schemas
-│   └── validators/          # Input validation
-│       ├── __init__.py      # Validator exports
-│       ├── credentials.py   # Credential validation
-│       └── sanitizers.py    # Input sanitizers
-├── entity_utils/            # Entity helper utilities
-│   ├── __init__.py
-│   ├── device_info.py       # Device information helpers
-│   └── state_helpers.py     # State management utilities
-├── service_actions/         # Service action implementations
-│   ├── __init__.py
-│   └── example_service.py   # Example service action handler
-├── translations/            # Localization files
-│   └── en.json              # English translations
-└── <platform>/              # Platform-specific implementations
-    ├── __init__.py          # Platform setup
-    └── <entity>.py          # Individual entity implementations
+│   ├── client.py            # REST API client
+│   ├── exceptions.py        # Integration-specific API exceptions
+│   ├── models.py            # Pydantic models for API payloads
+│   └── websocket.py         # WS client for live progress/events
+└── translations/
+    └── en.json              # English strings
 ```
 
 ## Core Components
 
-### Data Update Coordinator
+### Setup Layer (`__init__.py`)
 
-**Directory:** `coordinator/`
+- Registers integration services in `async_setup()`.
+- Creates API client, WebSocket client, and coordinator in `async_setup_entry()`.
+- Stores runtime objects on `entry.runtime_data`.
+- Forwards entry setup to platforms: sensor, binary_sensor, button.
 
-The coordinator package manages periodic data fetching from the external API and distributes
-updates to all entities. It is organized as a package with separate modules for different concerns:
+### Coordinator Layer (`coordinator.py`)
 
-**Package structure:**
+- Single polling source for entity data (`VaultDataUpdateCoordinator`).
+- Aggregates health, settings, encryption, storage, jobs, activity, job history, and restore-point counts.
+- Converts transport/auth/api failures into HA-native `UpdateFailed` / `ConfigEntryAuthFailed`.
+- Dynamically adjusts polling interval for active backups.
 
-- `base.py` - Main coordinator class (`VaultDataUpdateCoordinator`)
-- `data_processing.py` - Data validation, transformation, and caching utilities
-- `error_handling.py` - Error recovery strategies, retry logic, and circuit breaker patterns
-- `listeners.py` - Entity callbacks, event listeners, and performance monitoring
+### API Layer (`api/`)
 
-**Core functionality:**
+- `client.py`: async REST calls via aiohttp with 10-second timeout and explicit error mapping.
+- `models.py`: typed Pydantic models for API responses and coordinator payloads.
+- `websocket.py`: persistent reconnecting WS listener with header-based auth.
 
-- Configurable update interval (default: 5 minutes)
-- Error handling with exponential backoff
-- Shared data access for all entities
-- Automatic retry on transient failures
-- Data validation and transformation before distribution
-- Performance monitoring and metrics
+### Entity Layer (`entity.py`, `sensor.py`, `binary_sensor.py`, `button.py`)
 
-**Key class:** `VaultDataUpdateCoordinator` (exported from `coordinator/__init__.py`)
-
-**Design rationale:**
-
-The coordinator is structured as a package rather than a single file to support future extensibility:
-
-- **Separation of concerns**: Core logic, error handling, and data processing are isolated
-- **Easy extension**: New features (caching, metrics, webhooks) can be added as new modules
-- **Maintainability**: Individual modules stay focused and manageable (<400 lines)
-- **Testability**: Each module can be tested independently
-
-### API Client
-
-**Directory:** `api/`
-
-Handles all communication with external APIs or devices. Implements:
-
-- Async HTTP requests using `aiohttp`
-- Connection management and timeouts
-- Authentication handling
-- Error translation to custom exceptions
-
-**Key class:** `VaultApiClient`
-
-### Config Flow
-
-**Directory:** `config_flow_handler/`
-
-Implements the configuration UI for adding and configuring the integration. The package
-is organized modularly to support complex flows without becoming monolithic.
-
-**Structure:**
-
-- `config_flow.py`: Main flow (user setup, reauth, reconfigure)
-- `options_flow.py`: Options flow for post-setup configuration
-- `schemas/`: Voluptuous schemas for all forms
-- `validators/`: Validation logic separated from flow logic
-- `subentry_flow.py`: Template for multi-device/location support
-
-**Supported flows:**
-
-- Initial user setup with validation
-- Options flow for reconfiguration
-- Reauthentication flow for expired credentials
-- Ready for subentry flows (multi-device support)
-
-**Key classes:**
-
-- `VaultConfigFlowHandler` (main flow)
-- `VaultOptionsFlow` (options)
-
-### Base Entity
-
-**Package:** `entity/`
-
-Provides common functionality for all entities in the integration:
-
-- Device information
-- Unique ID generation
-- Coordinator integration
-- Availability tracking
-
-**Key class:** `VaultEntity` (in `entity/base.py`)
-
-## Platform Organization
-
-Each platform (sensor, binary_sensor, switch, etc.) follows this pattern:
-
-```text
-<platform>/
-├── __init__.py              # Platform setup: async_setup_entry()
-└── <entity_name>.py         # Individual entity implementation
-```
-
-Platform entities inherit from both:
-
-1. Home Assistant platform base (e.g., `SensorEntity`)
-2. `VaultEntity` for common functionality
+- `VaultEntity` provides unique IDs, device info, coordinator wiring, and `has_entity_name` behavior.
+- Platform entities consume coordinator data only (no direct API calls from entity properties).
+- Dynamic per-job/per-storage entity creation is driven by coordinator data updates.
 
 ## Data Flow
 
 ```text
-┌─────────────────┐
-│  Config Entry   │ ← Created by config flow
-└────────┬────────┘
-         │
-         ▼
-┌─────────────────┐
-│   Coordinator   │ ← Fetches data from API every 5 min
-└────────┬────────┘
-         │
-         ▼
-    ┌────┴────┐
-    │  Data   │ ← Stored in coordinator.data
-    └────┬────┘
-         │
-    ┌────┴────────────────┐
-    │                     │
-    ▼                     ▼
-┌─────────┐         ┌─────────┐
-│ Sensor  │         │ Switch  │ ← Entities read from coordinator
-└─────────┘         └─────────┘
+Config Entry
+   │
+   ▼
+API Client + WebSocket Client
+   │
+   ▼
+VaultDataUpdateCoordinator (polling aggregate)
+   │
+   ├── sensor entities
+   ├── binary_sensor entities
+   └── button entities
 ```
 
 ## AI Agent Instructions

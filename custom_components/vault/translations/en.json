@@ -142,6 +142,10 @@
         "job_name": {
           "name": "Job Name",
           "description": "The name of the Vault backup job to run. Provide either Job ID or Job Name."
+        },
+        "config_entry_id": {
+          "name": "Config Entry ID",
+          "description": "Optional target Vault config entry ID. Leave empty when only one Vault instance is configured; required when multiple instances are configured."
         }
       }
     },
@@ -172,6 +176,10 @@
         "destination": {
           "name": "Destination Override",
           "description": "Optional override for restore destination path."
+        },
+        "config_entry_id": {
+          "name": "Config Entry ID",
+          "description": "Optional target Vault config entry ID. Leave empty when only one Vault instance is configured; required when multiple instances are configured."
         }
       }
     },
@@ -182,6 +190,10 @@
         "storage_id": {
           "name": "Storage Destination ID",
           "description": "The ID of the storage destination to test."
+        },
+        "config_entry_id": {
+          "name": "Config Entry ID",
+          "description": "Optional target Vault config entry ID. Leave empty when only one Vault instance is configured; required when multiple instances are configured."
         }
       }
     }

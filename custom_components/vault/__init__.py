@@ -36,6 +36,7 @@ SCHEMA_RUN_BACKUP = vol.Schema(
     {
         vol.Optional("job_id"): cv.positive_int,
         vol.Optional("job_name"): cv.string,
+        vol.Optional("config_entry_id"): cv.string,
     }
 )
 
@@ -47,23 +48,44 @@ SCHEMA_RESTORE = vol.Schema(
         vol.Required("item_type"): vol.In(["container", "vm", "folder"]),
         vol.Optional("passphrase"): cv.string,
         vol.Optional("destination"): cv.string,
+        vol.Optional("config_entry_id"): cv.string,
     }
 )
 
 SCHEMA_TEST_STORAGE = vol.Schema(
     {
         vol.Required("storage_id"): cv.positive_int,
+        vol.Optional("config_entry_id"): cv.string,
     }
 )
 
 
-def _get_client_from_entry(hass: HomeAssistant, call: ServiceCall) -> VaultApiClient:
-    """Return the API client from the first loaded config entry."""
+def _get_entry_from_call(hass: HomeAssistant, call: ServiceCall) -> VaultConfigEntry:
+    """Resolve target config entry from service call context."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
         msg = "No Vault config entries found"
         raise ServiceValidationError(msg)
+
+    requested_entry_id: str | None = call.data.get("config_entry_id")
+    if requested_entry_id:
+        for entry in entries:
+            if entry.entry_id == requested_entry_id:
+                return entry  # type: ignore[return-value]
+        msg = f"No Vault config entry found for config_entry_id '{requested_entry_id}'"
+        raise ServiceValidationError(msg)
+
+    if len(entries) > 1:
+        msg = "Multiple Vault config entries found; provide config_entry_id"
+        raise ServiceValidationError(msg)
+
     entry: VaultConfigEntry = entries[0]  # type: ignore[assignment]
+    return entry
+
+
+def _get_client_from_entry(hass: HomeAssistant, call: ServiceCall) -> VaultApiClient:
+    """Return the API client for the resolved config entry."""
+    entry = _get_entry_from_call(hass, call)
     return entry.runtime_data.client
 
 
@@ -83,7 +105,7 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             )
 
         # Resolve job_name → job_id
-        entry: VaultConfigEntry = hass.config_entries.async_entries(DOMAIN)[0]  # type: ignore[assignment]
+        entry = _get_entry_from_call(hass, call)
         jobs = entry.runtime_data.coordinator.data.jobs
 
         if job_name is not None and job_id is None:

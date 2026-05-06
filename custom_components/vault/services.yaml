@@ -16,6 +16,12 @@ run_backup:
       required: false
       selector:
         text:
+    config_entry_id:
+      name: Config Entry ID
+      description: Optional target Vault config entry ID. Leave empty when only one Vault instance is configured; required when multiple instances are configured.
+      required: false
+      selector:
+        text:
 
 restore:
   name: Restore Backup
@@ -65,6 +71,12 @@ restore:
       required: false
       selector:
         text:
+    config_entry_id:
+      name: Config Entry ID
+      description: Optional target Vault config entry ID. Leave empty when only one Vault instance is configured; required when multiple instances are configured.
+      required: false
+      selector:
+        text:
 
 test_storage:
   name: Test Storage Connection
@@ -78,3 +90,9 @@ test_storage:
         number:
           min: 1
           mode: box
+    config_entry_id:
+      name: Config Entry ID
+      description: Optional target Vault config entry ID. Leave empty when only one Vault instance is configured; required when multiple instances are configured.
+      required: false
+      selector:
+        text:
