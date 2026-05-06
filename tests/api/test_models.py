@@ -35,6 +35,7 @@ class TestHealthStatus:
         """Test HealthStatus defaults."""
         h = HealthStatus(status="ok")
         assert h.version == ""
+        assert h.mode == ""
 
     def test_from_dict(self) -> None:
         """Test model_validate from dict."""
@@ -83,6 +84,11 @@ class TestStorageDestination:
         assert s.created_at is None
         assert s.updated_at is None
 
+    def test_unknown_storage_type_is_tolerated(self) -> None:
+        """Test unknown storage type values do not fail validation."""
+        s = StorageDestination.model_validate({"id": 1, "name": "Custom", "type": "rclone"})
+        assert s.type == "rclone"
+
 
 class TestStorageTestResult:
     """Tests for StorageTestResult model."""
@@ -120,6 +126,8 @@ class TestBackupJob:
         assert j.compression == "none"
         assert j.encryption == "none"
         assert j.verify_backup is True
+        assert j.source_id == 0
+        assert j.defer_remote_upload is False
 
 
 class TestJobRun:
@@ -134,7 +142,12 @@ class TestJobRun:
     def test_running_status(self) -> None:
         """Test running status."""
         r = JobRun(id=1, job_id=1, status=JobRunStatus.RUNNING)
-        assert r.status.value == "running"
+        assert str(getattr(r.status, "value", r.status)) == "running"
+
+    def test_unknown_status_is_tolerated(self) -> None:
+        """Test unknown status values do not fail validation."""
+        r = JobRun.model_validate({"id": 1, "job_id": 1, "status": "queued"})
+        assert r.status == "queued"
 
 
 class TestJobDetail:
@@ -168,6 +181,11 @@ class TestActivityEntry:
         a = ActivityEntry(id=1, message="Job completed")
         assert a.level == ActivityLevel.INFO
         assert a.message == "Job completed"
+
+    def test_warn_level_alias_normalized(self) -> None:
+        """Test API 'warn' level alias normalizes to warning enum."""
+        a = ActivityEntry.model_validate({"id": 1, "level": "warn", "message": "Test"})
+        assert a.level == ActivityLevel.WARNING
 
 
 class TestVaultApiData:

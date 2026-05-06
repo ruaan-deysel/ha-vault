@@ -313,24 +313,26 @@ class TestAuthHeaders:
     async def test_auth_header_sent_on_protected_endpoint(
         self, auth_client: VaultApiClient, mock_session: MagicMock
     ) -> None:
-        """Test that Authorization header is sent on non-public endpoints."""
+        """Test that API key headers are sent when an API key is configured."""
         mock_session.request = AsyncMock(return_value=_mock_response(json_data={}))
         await auth_client.async_get_settings()
         call_kwargs = mock_session.request.call_args
         headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers")
         assert headers is not None
+        assert headers["X-API-Key"] == "test-key-123"
         assert headers["Authorization"] == "Bearer test-key-123"
 
-    async def test_no_auth_header_on_public_endpoint(
+    async def test_auth_header_sent_on_health_endpoint(
         self, auth_client: VaultApiClient, mock_session: MagicMock
     ) -> None:
-        """Test that Authorization header is NOT sent on public endpoints."""
+        """Test that API key headers are also sent to health endpoint."""
         mock_session.request = AsyncMock(return_value=_mock_response(json_data={"status": "ok"}))
         await auth_client.async_get_health()
         call_kwargs = mock_session.request.call_args
         headers = call_kwargs.kwargs.get("headers") or call_kwargs[1].get("headers")
-        # No headers or empty headers for public paths
-        assert headers is None
+        assert headers is not None
+        assert headers["X-API-Key"] == "test-key-123"
+        assert headers["Authorization"] == "Bearer test-key-123"
 
     def test_tls_url(self, mock_session: MagicMock) -> None:
         """Test TLS client uses https scheme."""

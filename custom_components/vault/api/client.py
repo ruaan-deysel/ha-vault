@@ -24,15 +24,6 @@ from .models import (
 
 API_BASE = "/api/v1"
 
-# Endpoints that never require authentication
-_PUBLIC_PATHS = frozenset(
-    {
-        f"{API_BASE}/health",
-        f"{API_BASE}/ping",
-        f"{API_BASE}/auth/status",
-    }
-)
-
 
 class VaultApiClient:
     """Async API client for Vault on Unraid.
@@ -200,9 +191,10 @@ class VaultApiClient:
         """
         url = f"{self._base_url}{path}"
 
-        # Build headers — add auth for non-public endpoints
+        # Build headers — send both header styles for compatibility across Vault plugin versions.
         headers: dict[str, str] = {}
-        if self._api_key and path not in _PUBLIC_PATHS:
+        if self._api_key:
+            headers["X-API-Key"] = self._api_key
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         try:

@@ -67,12 +67,19 @@ class VaultJobBinarySensorEntityDescription(BinarySensorEntityDescription):
     is_on_fn: Callable[[VaultApiData, int], bool]
 
 
+_JOB_BINARY_SENSOR_LABELS: dict[str, str] = {
+    "job_running": "Running",
+    "job_last_success": "Last run successful",
+}
+
+
 def _is_job_running(data: VaultApiData, job_id: int) -> bool:
     """Return True if the most recent run for this job is running."""
     runs = data.job_runs.get(job_id, [])
     if not runs:
         return False
-    return runs[0].status.value == "running"
+    status_text = str(getattr(runs[0].status, "value", runs[0].status)).lower()
+    return status_text == "running"
 
 
 def _is_job_last_success(data: VaultApiData, job_id: int) -> bool:
@@ -80,7 +87,8 @@ def _is_job_last_success(data: VaultApiData, job_id: int) -> bool:
     runs = data.job_runs.get(job_id, [])
     if not runs:
         return False
-    return runs[0].status.value == "completed"
+    status_text = str(getattr(runs[0].status, "value", runs[0].status)).lower()
+    return status_text == "completed"
 
 
 PER_JOB_BINARY_SENSOR_TEMPLATES: tuple[VaultJobBinarySensorEntityDescription, ...] = (
@@ -181,7 +189,8 @@ class VaultJobBinarySensor(BinarySensorEntity, VaultEntity):
         super().__init__(coordinator, description)
         self.entity_description = description
         self._job_id = job.id
-        self._attr_name = f"{job.name} {description.translation_key or description.key}"
+        label = _JOB_BINARY_SENSOR_LABELS.get(description.translation_key or "", description.key)
+        self._attr_name = f"{job.name} {label}"
 
     @property
     def is_on(self) -> bool:

@@ -88,6 +88,9 @@
       "job_last_size": {
         "name": "Last size"
       },
+      "job_last_duration": {
+        "name": "Last duration"
+      },
       "job_items_backed_up": {
         "name": "Items backed up"
       },
@@ -96,6 +99,9 @@
       },
       "job_restore_points": {
         "name": "Restore points"
+      },
+      "job_last_failure_reason": {
+        "name": "Last failure reason"
       },
       "job_progress": {
         "name": "Progress"

@@ -30,11 +30,11 @@ async def test_global_sensors_created(
     sensor_entries = [e for e in entries if e.domain == "sensor"]
 
     # Global: vault_status, vault_version, jobs_total, jobs_enabled, encryption_status (5)
-    # Per-job: 3 jobs x 6 sensors = 18
+    # Per-job: 3 jobs x 8 sensors = 24
     # Per-job progress: 3 jobs x 1 = 3
     # Per-storage: 2 storage x 2 sensors = 4
-    # Total: 30
-    assert len(sensor_entries) == 30
+    # Total: 36
+    assert len(sensor_entries) == 36
 
 
 async def test_vault_status_sensor(
@@ -149,8 +149,8 @@ async def test_dynamic_job_detection_sensor(
     new_job = BackupJob(id=99, name="New Dynamic Job", enabled=True)
     original_jobs = list(mock_api_client.async_get_jobs.return_value)
     mock_api_client.async_get_jobs.return_value = [*original_jobs, new_job]
-    mock_api_client.async_get_job_history.side_effect = (
-        lambda job_id, **kwargs: [
+    mock_api_client.async_get_job_history.side_effect = lambda job_id, **kwargs: (
+        [
             JobRun(
                 id=100 + job_id,
                 job_id=job_id,
@@ -161,7 +161,7 @@ async def test_dynamic_job_detection_sensor(
                 size_bytes=1048576,
             )
         ]
-        if job_id not in (3,)
+        if job_id != 3
         else []
     )
 
@@ -173,8 +173,8 @@ async def test_dynamic_job_detection_sensor(
     entries_after = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
     sensor_count_after = len([e for e in entries_after if e.domain == "sensor"])
 
-    # Should have 7 new entities for the new job (6 sensors + 1 progress)
-    assert sensor_count_after == sensor_count_before + 7
+    # Should have 9 new entities for the new job (8 sensors + 1 progress)
+    assert sensor_count_after == sensor_count_before + 9
 
 
 async def test_progress_sensor_value(

@@ -20,6 +20,38 @@ cd "$SCRIPT_DIR/../.."
 # shellcheck source=script/.lib/output.sh
 source "$SCRIPT_DIR/../.lib/output.sh"
 
+resolve_latest_homeassistant_version() {
+    python3 - <<'PY'
+import json
+import re
+import sys
+from urllib.request import urlopen
+
+
+def parse(version: str) -> tuple[int, int, int]:
+    major, minor, patch = version.split(".")
+    return int(major), int(minor), int(patch)
+
+
+url = "https://pypi.org/pypi/homeassistant/json"
+pattern = re.compile(r"^\d+\.\d+\.\d+$")
+
+try:
+    with urlopen(url, timeout=15) as response:
+        payload = json.load(response)
+except Exception:
+    sys.exit(1)
+
+releases = payload.get("releases", {})
+stable_versions = [version for version in releases if pattern.match(version)]
+
+if not stable_versions:
+    sys.exit(1)
+
+print(max(stable_versions, key=parse))
+PY
+}
+
 if [[ ${APT_UPDATE:-"0"} == "1" ]]; then
     log_header "Updating system packages"
     sudo apt-get update
@@ -119,24 +151,36 @@ if [[ "$VENV_IS_EXTERNAL" == "true" ]]; then
 fi
 
 log_header "Installing development dependencies"
-uv pip install --requirement requirements_dev.txt
+uv pip install --upgrade --requirement requirements_dev.txt
 
 log_header "Installing test dependencies"
-uv pip install --requirement requirements_test.txt
+uv pip install --upgrade --requirement requirements_test.txt
 
 log_header "Installing runtime dependencies"
 if [[ -s requirements.txt ]] && grep -qv '^#' requirements.txt | grep -q '[^[:space:]]'; then
-    uv pip install --requirement requirements.txt
+    uv pip install --upgrade --requirement requirements.txt
 else
     log_info "No runtime dependencies defined (this is normal for blueprints)"
 fi
 
-HA_VERSION="${HA_VERSION:-$(grep '"homeassistant"' hacs.json | head -1 | sed 's/.*"homeassistant"\s*:\s*"\([^"]*\)".*/\1/')}"
+HA_VERSION_INPUT="${HA_VERSION:-latest}"
 
-if [[ -z "$HA_VERSION" ]]; then
-    log_error "HA_VERSION not set and could not be determined from hacs.json"
-    exit 1
+if [[ "$HA_VERSION_INPUT" == "latest" || "$HA_VERSION_INPUT" == "stable" ]]; then
+    log_header "Resolving latest stable Home Assistant version"
+    if HA_VERSION="$(resolve_latest_homeassistant_version)"; then
+        log_info "Using latest stable Home Assistant version: ${BOLD}${HA_VERSION}${NC}"
+    else
+        HA_VERSION="$(grep '"homeassistant"' hacs.json | head -1 | sed 's/.*"homeassistant"\s*:\s*"\([^"]*\)".*/\1/')"
+        if [[ -z "$HA_VERSION" ]]; then
+            log_error "Failed to resolve latest Home Assistant version and no fallback found in hacs.json"
+            exit 1
+        fi
+        log_warning "Failed to resolve latest stable Home Assistant from PyPI; falling back to hacs.json version ${HA_VERSION}"
+    fi
+else
+    HA_VERSION="$HA_VERSION_INPUT"
 fi
+
 HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"
 
 log_header "Installing Home Assistant ${HA_VERSION} runtime dependencies"
@@ -144,15 +188,15 @@ mkdir -p "/tmp/homeassistant"
 curl -fsSL "${HA_CORE_BASE_URL}/homeassistant/package_constraints.txt" -o "/tmp/homeassistant/package_constraints.txt"  # constraints for requirements files
 curl -fsSL "${HA_CORE_BASE_URL}/requirements.txt" -o "/tmp/requirements.txt"  # required by requirements_all.txt
 curl -fsSL "${HA_CORE_BASE_URL}/requirements_all.txt" -o "/tmp/requirements_all.txt"
-uv pip install --requirement "/tmp/requirements_all.txt"
+uv pip install --upgrade --constraint "/tmp/homeassistant/package_constraints.txt" --requirement "/tmp/requirements_all.txt"
 
 log_header "Installing Home Assistant ${HA_VERSION} test dependencies"
 curl -fsSL "${HA_CORE_BASE_URL}/requirements_test_pre_commit.txt" -o "/tmp/requirements_test_pre_commit.txt"  # required by requirements_test.txt
 curl -fsSL "${HA_CORE_BASE_URL}/requirements_test.txt" -o "/tmp/requirements_test.txt"
-uv pip install --requirement "/tmp/requirements_test.txt"
+uv pip install --upgrade --constraint "/tmp/homeassistant/package_constraints.txt" --requirement "/tmp/requirements_test.txt"
 
 log_header "Installing Home Assistant ${HA_VERSION} core"
-uv pip install "homeassistant==${HA_VERSION}"
+uv pip install --upgrade "homeassistant==${HA_VERSION}"
 
 set +e
 rm -rf /tmp/requirements*.txt /tmp/homeassistant/ || log_warning "Failed to clean up temporary files"

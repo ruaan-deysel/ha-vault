@@ -115,8 +115,8 @@ async def test_dynamic_job_detection_binary_sensor(
     new_job = BackupJob(id=99, name="New Dynamic Job", enabled=True)
     original_jobs = list(mock_api_client.async_get_jobs.return_value)
     mock_api_client.async_get_jobs.return_value = [*original_jobs, new_job]
-    mock_api_client.async_get_job_history.side_effect = (
-        lambda job_id, **kwargs: [
+    mock_api_client.async_get_job_history.side_effect = lambda job_id, **kwargs: (
+        [
             JobRun(
                 id=100 + job_id,
                 job_id=job_id,
@@ -127,7 +127,7 @@ async def test_dynamic_job_detection_binary_sensor(
                 size_bytes=1048576,
             )
         ]
-        if job_id not in (3,)
+        if job_id != 3
         else []
     )
 

@@ -248,7 +248,11 @@ async def test_ws_event_callback(
     ws_callback = mock_websocket.register_listener.call_args[0][0]
 
     events: list = []
-    hass.bus.async_listen("vault_backup_started", lambda e: events.append(e))
+
+    def _capture_event(event) -> None:
+        events.append(event)
+
+    hass.bus.async_listen("vault_backup_started", _capture_event)
 
     ws_callback(WebSocketEvent(type="job_run_started", job_id=1))
     await hass.async_block_till_done()

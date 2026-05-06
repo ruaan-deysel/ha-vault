@@ -57,6 +57,9 @@ class VaultConfigFlow(ConfigFlow, domain=DOMAIN):
 
             try:
                 health = await client.async_get_health()
+            except VaultAuthenticationError:
+                self._user_input = {CONF_HOST: host, CONF_PORT: port, CONF_TLS: tls}
+                return await self.async_step_auth()
             except VaultConnectionError:
                 errors["base"] = "cannot_connect"
             except Exception:  # noqa: BLE001
@@ -64,16 +67,6 @@ class VaultConfigFlow(ConfigFlow, domain=DOMAIN):
             else:
                 self._user_input = {CONF_HOST: host, CONF_PORT: port, CONF_TLS: tls}
                 self._health_version = health.version
-
-                # Check if auth is required
-                try:
-                    auth_status = await client.async_get_auth_status()
-                except (VaultConnectionError, Exception):  # noqa: BLE001
-                    # If we can't check auth status, assume not required
-                    auth_status = None
-
-                if auth_status and auth_status.auth_required:
-                    return await self.async_step_auth()
 
                 # No auth required — create entry directly
                 unique_id = f"{host}:{port}"

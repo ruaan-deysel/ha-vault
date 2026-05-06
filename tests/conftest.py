@@ -175,26 +175,30 @@ def mock_api_client(
     client.async_get_job = AsyncMock()
     client.async_run_job = AsyncMock(return_value={"status": "started"})
     client.async_get_job_history = AsyncMock(
-        side_effect=lambda job_id, **kwargs: [
-            JobRun(
-                id=100 + job_id,
-                job_id=job_id,
-                status=JobRunStatus.COMPLETED,
-                items_total=10,
-                items_done=10,
-                items_failed=0,
-                size_bytes=1048576,
-            )
-        ]
-        if job_id != 3
-        else []
+        side_effect=lambda job_id, **kwargs: (
+            [
+                JobRun(
+                    id=100 + job_id,
+                    job_id=job_id,
+                    status=JobRunStatus.COMPLETED,
+                    items_total=10,
+                    items_done=10,
+                    items_failed=0,
+                    size_bytes=1048576,
+                )
+            ]
+            if job_id != 3
+            else []
+        )
     )
     client.async_get_restore_points = AsyncMock(
-        side_effect=lambda job_id: [RestorePoint(id=i, job_run_id=100, job_id=job_id) for i in range(1, 6)]
-        if job_id == 1
-        else [RestorePoint(id=i, job_run_id=100, job_id=job_id) for i in range(1, 4)]
-        if job_id == 2
-        else []
+        side_effect=lambda job_id: (
+            [RestorePoint(id=i, job_run_id=100, job_id=job_id) for i in range(1, 6)]
+            if job_id == 1
+            else [RestorePoint(id=i, job_run_id=100, job_id=job_id) for i in range(1, 4)]
+            if job_id == 2
+            else []
+        )
     )
     client.async_restore = AsyncMock(return_value={"status": "started"})
     client.async_get_activity = AsyncMock(return_value=mock_activity)

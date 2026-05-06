@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.vault.api.exceptions import VaultAuthenticationError, VaultConnectionError
-from custom_components.vault.api.models import AuthStatus, HealthStatus
+from custom_components.vault.api.models import HealthStatus
 from custom_components.vault.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
@@ -17,7 +17,6 @@ from homeassistant.data_entry_flow import FlowResultType
 def _make_mock_client(
     *,
     health: HealthStatus | None = None,
-    auth_status: AuthStatus | None = None,
     health_side_effect: Exception | None = None,
 ) -> MagicMock:
     """Create a mock VaultApiClient with common defaults."""
@@ -26,7 +25,6 @@ def _make_mock_client(
         mock_client.async_get_health = AsyncMock(side_effect=health_side_effect)
     else:
         mock_client.async_get_health = AsyncMock(return_value=health or HealthStatus(status="ok", version="1.0.0"))
-    mock_client.async_get_auth_status = AsyncMock(return_value=auth_status or AuthStatus(auth_required=False))
     return mock_client
 
 
@@ -55,9 +53,9 @@ async def test_user_step_auth_required(hass: HomeAssistant) -> None:
     with patch(
         "custom_components.vault.config_flow.VaultApiClient",
     ) as mock_client_class:
-        # Step 1: health succeeds, auth_status says auth required
+        # Step 1: health requires authentication
         mock_client_class.return_value = _make_mock_client(
-            auth_status=AuthStatus(auth_required=True),
+            health_side_effect=VaultAuthenticationError("auth required"),
         )
 
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
@@ -85,9 +83,9 @@ async def test_auth_step_invalid_key(hass: HomeAssistant) -> None:
     with patch(
         "custom_components.vault.config_flow.VaultApiClient",
     ) as mock_client_class:
-        # Step 1: health succeeds, auth required
+        # Step 1: health requires authentication
         mock_client_class.return_value = _make_mock_client(
-            auth_status=AuthStatus(auth_required=True),
+            health_side_effect=VaultAuthenticationError("auth required"),
         )
 
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
@@ -116,7 +114,7 @@ async def test_auth_step_connection_error(hass: HomeAssistant) -> None:
         "custom_components.vault.config_flow.VaultApiClient",
     ) as mock_client_class:
         mock_client_class.return_value = _make_mock_client(
-            auth_status=AuthStatus(auth_required=True),
+            health_side_effect=VaultAuthenticationError("auth required"),
         )
 
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
@@ -144,7 +142,7 @@ async def test_auth_step_unknown_error(hass: HomeAssistant) -> None:
         "custom_components.vault.config_flow.VaultApiClient",
     ) as mock_client_class:
         mock_client_class.return_value = _make_mock_client(
-            auth_status=AuthStatus(auth_required=True),
+            health_side_effect=VaultAuthenticationError("auth required"),
         )
 
         result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})

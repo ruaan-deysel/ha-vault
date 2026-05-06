@@ -50,6 +50,11 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
         )
         self.client = client
 
+    @staticmethod
+    def _job_run_status_text(status: object) -> str:
+        """Return normalized lowercase status text for enum/string values."""
+        return str(getattr(status, "value", status)).lower()
+
     async def _async_update_data(self) -> VaultApiData:
         """Fetch data from all Vault API endpoints.
 
@@ -95,7 +100,7 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
         )
 
         # Adjust polling rate: faster when a job is running
-        has_running = any(runs and runs[0].status.value == "running" for runs in job_runs.values())
+        has_running = any(runs and self._job_run_status_text(runs[0].status) == "running" for runs in job_runs.values())
         new_interval = ACTIVE_UPDATE_INTERVAL_SECONDS if has_running else DEFAULT_UPDATE_INTERVAL_SECONDS
         self.update_interval = timedelta(seconds=new_interval)
 

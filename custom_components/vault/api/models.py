@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class JobRunStatus(StrEnum):
@@ -24,6 +24,7 @@ class StorageType(StrEnum):
     SMB = "smb"
     S3 = "s3"
     SFTP = "sftp"
+    WEBDAV = "webdav"
 
 
 class ActivityLevel(StrEnum):
@@ -51,6 +52,7 @@ class HealthStatus(BaseModel):
 
     status: str
     version: str = ""
+    mode: str = ""
 
 
 # --- Settings ---
@@ -76,10 +78,22 @@ class StorageDestination(BaseModel):
 
     id: int
     name: str
-    type: StorageType = StorageType.LOCAL
+    type: StorageType | str = StorageType.LOCAL
     config: str = ""
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalize_storage_type(cls, value: StorageType | str) -> StorageType | str:
+        """Normalize storage type and tolerate unknown future values."""
+        if isinstance(value, str):
+            normalized = value.lower()
+            try:
+                return StorageType(normalized)
+            except ValueError:
+                return normalized
+        return value
 
 
 class StorageTestResult(BaseModel):
@@ -106,11 +120,14 @@ class BackupJob(BaseModel):
     compression: str = "none"
     encryption: str = "none"
     container_mode: str = ""
+    vm_mode: str = ""
     pre_script: str = ""
     post_script: str = ""
     notify_on: str = "failure"
     verify_backup: bool = True
     storage_dest_id: int = 0
+    source_id: int = 0
+    defer_remote_upload: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -139,8 +156,9 @@ class JobRun(BaseModel):
 
     id: int
     job_id: int
-    status: JobRunStatus = JobRunStatus.COMPLETED
+    status: JobRunStatus | str = JobRunStatus.COMPLETED
     backup_type: str = "full"
+    run_type: str = "backup"
     started_at: datetime | None = None
     completed_at: datetime | None = None
     log: str = ""
@@ -148,6 +166,19 @@ class JobRun(BaseModel):
     items_done: int = 0
     items_failed: int = 0
     size_bytes: int = Field(default=0, description="Backup size in bytes")
+    duration_seconds: int = 0
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def _normalize_status(cls, value: JobRunStatus | str) -> JobRunStatus | str:
+        """Normalize status and tolerate unknown future values."""
+        if isinstance(value, str):
+            normalized = value.lower()
+            try:
+                return JobRunStatus(normalized)
+            except ValueError:
+                return normalized
+        return value
 
 
 class RestorePoint(BaseModel):
@@ -160,6 +191,10 @@ class RestorePoint(BaseModel):
     storage_path: str = ""
     metadata: str = ""
     size_bytes: int = Field(default=0, description="Backup size in bytes")
+    parent_restore_point_id: int = 0
+    source_id: int = 0
+    chain_status: str = ""
+    chain_depth: int = 0
     created_at: datetime | None = None
 
 
@@ -175,6 +210,14 @@ class ActivityEntry(BaseModel):
     message: str = ""
     details: str = ""
     created_at: datetime | None = None
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def _normalize_level(cls, value: str | ActivityLevel) -> str | ActivityLevel:
+        """Normalize API level aliases used by newer Vault plugin versions."""
+        if isinstance(value, str) and value.lower() == "warn":
+            return "warning"
+        return value
 
 
 # --- Aggregated coordinator data ---

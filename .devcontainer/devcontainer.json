@@ -1,12 +1,12 @@
 {
   "name": "HA vault Dev Container",
-  "image": "mcr.microsoft.com/devcontainers/python:3.13",
+  "image": "mcr.microsoft.com/devcontainers/python:3.14",
   "postCreateCommand": "bash .devcontainer/setup-shell.sh && bash .devcontainer/setup-git.sh && script/setup/setup",
   "containerEnv": {
-    // Home Assistant version to install in the devcontainer.
-    // Uncomment and set a specific version if needed (e.g., "2025.12.3").
-    // If not set, defaults to version from hacs.json.
-    // "HA_VERSION": "2025.12.3",
+    // Home Assistant version selection for bootstrap.
+    // Use "latest" (default) to always install the latest stable release from PyPI.
+    // Set an explicit version (e.g., "2026.4.4") only when you need to pin.
+    "HA_VERSION": "latest",
     // Install HACS in the Home Assistant installation
     "HA_INSTALL_HACS": "1",
     // Enable asyncio debug mode for easier debugging of async code

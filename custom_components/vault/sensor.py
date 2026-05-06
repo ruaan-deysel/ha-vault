@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+import json
 import re
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
-from homeassistant.const import EntityCategory, UnitOfInformation
+from homeassistant.const import EntityCategory, UnitOfInformation, UnitOfTime
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api.models import BackupJob, JobRun, StorageDestination, VaultApiData
+from .api.models import BackupJob, JobRun, StorageDestination, StorageType, VaultApiData
 from .const import DOMAIN
 from .coordinator import VaultConfigEntry, VaultDataUpdateCoordinator
 from .entity import VaultEntity
@@ -86,6 +87,11 @@ def _latest_run(data: VaultApiData, job_id: int) -> JobRun | None:
     return runs[0] if runs else None
 
 
+def _status_text(value: object) -> str:
+    """Return normalized lowercase status text for enum/string values."""
+    return str(getattr(value, "value", value)).lower()
+
+
 @dataclass(frozen=True, kw_only=True)
 class VaultJobSensorEntityDescription(SensorEntityDescription):
     """Describes a per-job Vault sensor entity."""
@@ -93,10 +99,20 @@ class VaultJobSensorEntityDescription(SensorEntityDescription):
     value_fn: Callable[[VaultApiData, int], Any]
 
 
+_JOB_SENSOR_LABELS: dict[str, str] = {
+    "job_status": "Status",
+    "job_last_run": "Last run",
+    "job_last_size": "Last size",
+    "job_items_backed_up": "Items backed up",
+    "job_items_failed": "Items failed",
+    "job_restore_points": "Restore points",
+}
+
+
 def _job_status(data: VaultApiData, job_id: int) -> str:
     """Return the status string of the most recent run for a job."""
     run = _latest_run(data, job_id)
-    return run.status.value if run else "idle"
+    return _status_text(run.status) if run else "idle"
 
 
 def _job_last_run(data: VaultApiData, job_id: int) -> Any:
@@ -109,6 +125,12 @@ def _job_last_size(data: VaultApiData, job_id: int) -> int | None:
     """Return the size in bytes of the most recent run."""
     run = _latest_run(data, job_id)
     return run.size_bytes if run else None
+
+
+def _job_last_duration(data: VaultApiData, job_id: int) -> int | None:
+    """Return duration of the most recent run in seconds."""
+    run = _latest_run(data, job_id)
+    return run.duration_seconds if run else None
 
 
 def _job_items_backed_up(data: VaultApiData, job_id: int) -> int:
@@ -126,6 +148,50 @@ def _job_items_failed(data: VaultApiData, job_id: int) -> int:
 def _job_restore_points(data: VaultApiData, job_id: int) -> int:
     """Return the restore point count for a job."""
     return data.restore_point_counts.get(job_id, 0)
+
+
+def _job_last_failure_reason(data: VaultApiData, job_id: int) -> str | None:
+    """Return a compact failure reason for the latest run when not successful."""
+    run = _latest_run(data, job_id)
+    if not run:
+        return None
+
+    status = _status_text(run.status)
+    if status in {"completed", "running"}:
+        return None
+
+    if run.log:
+        try:
+            parsed = json.loads(run.log)
+        except json.JSONDecodeError:
+            return run.log[:255]
+
+        if isinstance(parsed, dict):
+            for key in ("error", "message", "reason", "details"):
+                value = parsed.get(key)
+                if value:
+                    return str(value)[:255]
+
+        if isinstance(parsed, list):
+            failed_items: list[str] = []
+            for item in parsed:
+                if not isinstance(item, dict):
+                    continue
+                item_status = _status_text(item.get("status", ""))
+                if item_status and item_status not in {"ok", "completed", "success"}:
+                    name = item.get("name") or item.get("item_name") or "item"
+                    failed_items.append(str(name))
+            if failed_items:
+                return f"Failed items: {', '.join(failed_items[:5])}"
+
+    return f"Last run status: {status}"
+
+
+def _storage_type_text(storage: StorageDestination) -> str:
+    """Return storage type as a displayable string for enum/string values."""
+    if isinstance(storage.type, StorageType):
+        return storage.type.value
+    return str(storage.type)
 
 
 def _job_sensor_descriptions() -> tuple[VaultJobSensorEntityDescription, ...]:
@@ -153,6 +219,14 @@ def _job_sensor_descriptions() -> tuple[VaultJobSensorEntityDescription, ...]:
             value_fn=_job_last_size,
         ),
         VaultJobSensorEntityDescription(
+            key="last_duration",
+            translation_key="job_last_duration",
+            device_class=SensorDeviceClass.DURATION,
+            native_unit_of_measurement=UnitOfTime.SECONDS,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            value_fn=_job_last_duration,
+        ),
+        VaultJobSensorEntityDescription(
             key="items_backed_up",
             translation_key="job_items_backed_up",
             native_unit_of_measurement="items",
@@ -171,6 +245,13 @@ def _job_sensor_descriptions() -> tuple[VaultJobSensorEntityDescription, ...]:
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
             value_fn=_job_restore_points,
+        ),
+        VaultJobSensorEntityDescription(
+            key="last_failure_reason",
+            translation_key="job_last_failure_reason",
+            entity_category=EntityCategory.DIAGNOSTIC,
+            entity_registry_enabled_default=False,
+            value_fn=_job_last_failure_reason,
         ),
     )
 
@@ -191,13 +272,14 @@ STORAGE_SENSOR_DESCRIPTIONS: tuple[VaultStorageSensorEntityDescription, ...] = (
     VaultStorageSensorEntityDescription(
         key="name",
         translation_key="storage_name",
+        entity_registry_enabled_default=False,
         value_fn=lambda s: s.name,
     ),
     VaultStorageSensorEntityDescription(
         key="type",
         translation_key="storage_type",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: s.type.value,
+        value_fn=_storage_type_text,
     ),
 )
 
@@ -319,7 +401,8 @@ class VaultJobSensor(SensorEntity, VaultEntity):
         super().__init__(coordinator, description)
         self.entity_description = description
         self._job_id = job.id
-        self._attr_name = f"{job.name} {description.translation_key or description.key}"
+        label = _JOB_SENSOR_LABELS.get(description.translation_key or "", description.key)
+        self._attr_name = f"{job.name} {label}"
 
     @property
     def native_value(self) -> Any:
@@ -372,7 +455,8 @@ class VaultStorageSensor(SensorEntity, VaultEntity):
         super().__init__(coordinator, description)
         self.entity_description = description
         self._storage_id = storage.id
-        self._attr_name = f"Storage {storage.name} {description.translation_key or description.key}"
+        label = "Name" if description.translation_key == "storage_name" else "Type"
+        self._attr_name = f"Storage {storage.name} {label}"
 
     @property
     def native_value(self) -> Any:
