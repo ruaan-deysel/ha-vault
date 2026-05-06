@@ -103,9 +103,11 @@ _JOB_SENSOR_LABELS: dict[str, str] = {
     "job_status": "Status",
     "job_last_run": "Last run",
     "job_last_size": "Last size",
+    "job_last_duration": "Last duration",
     "job_items_backed_up": "Items backed up",
     "job_items_failed": "Items failed",
     "job_restore_points": "Restore points",
+    "job_last_failure_reason": "Last failure reason",
 }
 
 

@@ -52,6 +52,18 @@ print(max(stable_versions, key=parse))
 PY
 }
 
+validate_homeassistant_version() {
+    local version="$1"
+    # Accept x.y.z with optional pre-release/build metadata.
+    local version_pattern='^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z]+)*$'
+
+    if [[ ! "$version" =~ $version_pattern ]]; then
+        return 1
+    fi
+
+    return 0
+}
+
 if [[ ${APT_UPDATE:-"0"} == "1" ]]; then
     log_header "Updating system packages"
     sudo apt-get update
@@ -168,6 +180,10 @@ HA_VERSION_INPUT="${HA_VERSION:-latest}"
 if [[ "$HA_VERSION_INPUT" == "latest" || "$HA_VERSION_INPUT" == "stable" ]]; then
     log_header "Resolving latest stable Home Assistant version"
     if HA_VERSION="$(resolve_latest_homeassistant_version)"; then
+        if ! validate_homeassistant_version "$HA_VERSION"; then
+            log_error "Resolved Home Assistant version '$HA_VERSION' is invalid"
+            exit 1
+        fi
         log_info "Using latest stable Home Assistant version: ${BOLD}${HA_VERSION}${NC}"
     else
         HA_VERSION="$(grep '"homeassistant"' hacs.json | head -1 | sed 's/.*"homeassistant"\s*:\s*"\([^"]*\)".*/\1/')"
@@ -175,10 +191,18 @@ if [[ "$HA_VERSION_INPUT" == "latest" || "$HA_VERSION_INPUT" == "stable" ]]; the
             log_error "Failed to resolve latest Home Assistant version and no fallback found in hacs.json"
             exit 1
         fi
+        if ! validate_homeassistant_version "$HA_VERSION"; then
+            log_error "Fallback Home Assistant version from hacs.json '$HA_VERSION' is invalid"
+            exit 1
+        fi
         log_warning "Failed to resolve latest stable Home Assistant from PyPI; falling back to hacs.json version ${HA_VERSION}"
     fi
 else
     HA_VERSION="$HA_VERSION_INPUT"
+    if ! validate_homeassistant_version "$HA_VERSION"; then
+        log_error "Provided HA_VERSION '$HA_VERSION' is invalid"
+        exit 1
+    fi
 fi
 
 HA_CORE_BASE_URL="https://raw.githubusercontent.com/home-assistant/core/${HA_VERSION}"

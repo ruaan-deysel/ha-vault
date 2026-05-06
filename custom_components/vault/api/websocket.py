@@ -53,14 +53,13 @@ class VaultWebSocketClient:
         scheme = "wss" if tls else "ws"
         url = f"{scheme}://{host}:{port}/api/v1/ws"
         self._url = url
+        self._log_url = url
         self._headers: dict[str, str] | None = None
         if api_key:
             self._headers = {
                 "X-API-Key": api_key,
                 "Authorization": f"Bearer {api_key}",
             }
-            # Keep token query param for backward compatibility with older Vault plugin builds.
-            self._url = f"{url}?token={api_key}"
         self._session = session
         self._logger = logger
         self._ws: aiohttp.ClientWebSocketResponse | None = None
@@ -114,7 +113,7 @@ class VaultWebSocketClient:
 
         while self._running:
             try:
-                self._logger.debug("Connecting to Vault WebSocket at %s", self._url)
+                self._logger.debug("Connecting to Vault WebSocket at %s", self._log_url)
                 self._ws = await self._session.ws_connect(self._url, heartbeat=30, headers=self._headers)
                 retry_delay = 5  # Reset on successful connect
 
