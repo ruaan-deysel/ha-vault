@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The changelog uses date sections in `YYYY.MM.DD` format.
 
-## 2026.05.06
+## [Unreleased]
 
 ### Added
 
