@@ -10,11 +10,6 @@ on:
 
 permissions: {}
 
-# IMPORTANT: Keep HA_VERSION synchronized across all workflow files:
-# - copilot-setup-steps.yml
-# - lint.yml
-# - validate.yml (if added in the future)
-
 jobs:
   ruff:
     name: "Ruff"
@@ -35,25 +30,23 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "**/requirements*.txt"
 
-      - name: Get Home Assistant version
-        id: ha_version
-        run: |
-          HA_VERSION=$(grep '"homeassistant"' hacs.json | head -1 | sed 's/.*"homeassistant"\s*:\s*"\([^"]*\)".*/\1/')
-          echo "HA_VERSION=${HA_VERSION}" >> $GITHUB_OUTPUT
-          echo "Home Assistant version: ${HA_VERSION}"
-
       - name: Cache Home Assistant installation
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             .local/ha-venv
-          key: ha-venv-${{ runner.os }}-py313-ha${{ steps.ha_version.outputs.HA_VERSION }}-${{ hashFiles('**/requirements*.txt') }}
+          key: ha-venv-${{ runner.os }}-py313-lint-${{ hashFiles('requirements_dev.txt') }}
           restore-keys: |
-            ha-venv-${{ runner.os }}-py313-ha${{ steps.ha_version.outputs.HA_VERSION }}-
-            ha-venv-${{ runner.os }}-py313-
+            ha-venv-${{ runner.os }}-py313-lint-
 
-      - name: Install requirements
-        run: script/setup/bootstrap
+      - name: Install lint dependencies
+        run: |
+          if [ ! -d .local/ha-venv ]; then
+            uv venv .local/ha-venv
+          fi
+          source .local/ha-venv/bin/activate
+          uv pip install --upgrade --requirement requirements_dev.txt
+          uv pip install --upgrade ruff
 
       - name: Lint check
         run: script/lint-check
