@@ -10,7 +10,7 @@ This is a Home Assistant custom integration that was generated from a blueprint 
 
 - **Domain:** `vault`
 - **Title:** Vault
-- **Repository:** ruaan-deysel/ha-vault-backup
+- **Repository:** ruaan-deysel/ha-vault
 
 **Key directories:**
 

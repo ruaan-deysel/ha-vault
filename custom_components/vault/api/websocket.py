@@ -20,6 +20,22 @@ _WS_TO_HA_EVENT: dict[str, str] = {
     "item_backup_done": "vault_backup_item_done",
     "item_backup_failed": "vault_backup_item_failed",
     "job_run_completed": "vault_backup_completed",
+    "item_restore_start": "vault_restore_item_start",
+    "item_restore_done": "vault_restore_item_done",
+    "item_restore_failed": "vault_restore_item_failed",
+    "restore_progress": "vault_restore_progress",
+    "verify_started": "vault_verify_started",
+    "verify_progress": "vault_verify_progress",
+    "verify_complete": "vault_verify_complete",
+    "queue_update": "vault_queue_update",
+    "job_cancelling": "vault_job_cancelling",
+    "storage_health": "vault_storage_health",
+    "storage_capacity_updated": "vault_storage_capacity",
+    "dedup_gc_complete": "vault_dedup_gc_complete",
+    "import_completed": "vault_import_completed",
+    "config_changed": "vault_config_changed",
+    "activity": "vault_activity",
+    "stale_items_detected": "vault_stale_items_detected",
 }
 
 

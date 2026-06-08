@@ -22,6 +22,7 @@ class StorageType(StrEnum):
 
     LOCAL = "local"
     SMB = "smb"
+    NFS = "nfs"
     S3 = "s3"
     SFTP = "sftp"
     WEBDAV = "webdav"
@@ -227,6 +228,7 @@ class VaultApiData(BaseModel):
     """Aggregated data returned by the coordinator after polling all endpoints."""
 
     health: HealthStatus = Field(default_factory=HealthStatus.model_construct)
+    runner_status: dict[str, object] = Field(default_factory=dict)
     settings: Settings = Field(default_factory=Settings.model_construct)
     encryption: EncryptionStatus = Field(default_factory=EncryptionStatus.model_construct)
     storage: list[StorageDestination] = Field(default_factory=list)
@@ -249,9 +251,16 @@ class WebSocketEvent(BaseModel):
     item_type: str | None = None
     status: str | None = None
     percent: int | None = None
+    done_bytes: int | None = None
+    total_bytes: int | None = None
+    rate_bytes_per_second: float | None = None
     message: str | None = None
     size_bytes: int | None = None
     items_done: int | None = None
     items_failed: int | None = None
+    queue: list[dict[str, object]] | None = None
+    phase: str | None = None
+    passed: bool | None = None
+    bytes_freed: int | None = None
     verified: bool | None = None
     error: str | None = None

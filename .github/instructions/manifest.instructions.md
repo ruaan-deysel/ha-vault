@@ -20,10 +20,10 @@ This schema combines Home Assistant's official manifest requirements with HACS-s
   "name": "Vault",
   "codeowners": ["@ruaan-deysel"],
   "config_flow": true,
-  "documentation": "https://github.com/ruaan-deysel/ha-vault-backup",
+  "documentation": "https://github.com/ruaan-deysel/ha-vault",
   "integration_type": "device",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/ruaan-deysel/ha-vault-backup/issues",
+  "issue_tracker": "https://github.com/ruaan-deysel/ha-vault/issues",
   "requirements": [],
   "version": "0.0.0"
 }
