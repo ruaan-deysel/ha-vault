@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.vault import async_setup
+from custom_components.vault import _get_entry_from_call, async_setup
 from custom_components.vault.api.exceptions import VaultApiError, VaultConnectionError
 from custom_components.vault.api.models import StorageTestResult, WebSocketEvent
 from custom_components.vault.const import DOMAIN
@@ -341,3 +341,47 @@ async def test_unload_cleans_hass_data(
 
     # After unloading the only entry, hass.data[DOMAIN] should be cleaned up
     assert DOMAIN not in hass.data
+
+
+async def test_get_entry_from_call_unknown_config_entry_id(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """Test resolving unknown config_entry_id raises ServiceValidationError."""
+    call = MagicMock()
+    call.data = {"config_entry_id": "does-not-exist"}
+
+    with pytest.raises(ServiceValidationError, match="No Vault config entry found"):
+        _get_entry_from_call(hass, call)
+
+
+async def test_get_entry_from_call_multiple_entries_requires_id(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """Test resolving without config_entry_id fails when multiple entries exist."""
+    second_entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Vault (2.0.0)",
+        data={"host": "192.168.1.101", "port": 24085},
+        unique_id="192.168.1.101:24085",
+    )
+    second_entry.add_to_hass(hass)
+
+    call = MagicMock()
+    call.data = {}
+
+    with pytest.raises(ServiceValidationError, match="Multiple Vault config entries found"):
+        _get_entry_from_call(hass, call)
+
+
+async def test_get_entry_from_call_with_matching_config_entry_id(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """Test resolving explicit config_entry_id returns the matching entry."""
+    call = MagicMock()
+    call.data = {"config_entry_id": mock_setup_entry.entry_id}
+
+    resolved = _get_entry_from_call(hass, call)
+    assert resolved.entry_id == mock_setup_entry.entry_id

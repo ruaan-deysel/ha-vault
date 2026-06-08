@@ -246,4 +246,4 @@ If configuration changes aren't persisted:
 
 - [Getting Started](./GETTING_STARTED.md) - Installation and initial setup
 - [Examples](./EXAMPLES.md) - Automation and dashboard examples
-- [GitHub Issues](https://github.com/ruaan-deysel/ha-vault-backup/issues) - Report problems
+- [GitHub Issues](https://github.com/ruaan-deysel/ha-vault/issues) - Report problems

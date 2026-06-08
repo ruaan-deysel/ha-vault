@@ -70,6 +70,9 @@
       "vault_version": {
         "name": "Version"
       },
+      "vault_mode": {
+        "name": "Mode"
+      },
       "jobs_total": {
         "name": "Total jobs"
       },
@@ -78,6 +81,12 @@
       },
       "encryption_status": {
         "name": "Encryption status"
+      },
+      "runner_queue_length": {
+        "name": "Runner queue length"
+      },
+      "runner_current_job_id": {
+        "name": "Runner current job ID"
       },
       "job_status": {
         "name": "Status"

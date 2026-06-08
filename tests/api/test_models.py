@@ -1,6 +1,10 @@
 """Tests for Vault API Pydantic models."""
 
+# ruff: noqa: SLF001
+
 from __future__ import annotations
+
+from typing import Any, cast
 
 from custom_components.vault.api.models import (
     ActivityEntry,
@@ -89,6 +93,15 @@ class TestStorageDestination:
         s = StorageDestination.model_validate({"id": 1, "name": "Custom", "type": "rclone"})
         assert s.type == "rclone"
 
+    def test_storage_type_enum_value_passes_through(self) -> None:
+        """Test enum storage type values are preserved by validator pass-through."""
+        s = StorageDestination(id=1, name="NFS", type=StorageType.NFS)
+        assert s.type == StorageType.NFS
+
+    def test_storage_type_validator_non_string_passthrough(self) -> None:
+        """Test storage type validator returns non-string values as-is."""
+        assert StorageDestination._normalize_storage_type(cast(Any, 123)) == 123
+
 
 class TestStorageTestResult:
     """Tests for StorageTestResult model."""
@@ -149,6 +162,15 @@ class TestJobRun:
         r = JobRun.model_validate({"id": 1, "job_id": 1, "status": "queued"})
         assert r.status == "queued"
 
+    def test_status_enum_value_passes_through(self) -> None:
+        """Test enum status values are preserved by validator pass-through."""
+        r = JobRun(id=1, job_id=1, status=JobRunStatus.PARTIAL)
+        assert r.status == JobRunStatus.PARTIAL
+
+    def test_status_validator_non_string_passthrough(self) -> None:
+        """Test status validator returns non-string values as-is."""
+        assert JobRun._normalize_status(cast(Any, 999)) == 999
+
 
 class TestJobDetail:
     """Tests for JobDetail model."""
@@ -186,6 +208,11 @@ class TestActivityEntry:
         """Test API 'warn' level alias normalizes to warning enum."""
         a = ActivityEntry.model_validate({"id": 1, "level": "warn", "message": "Test"})
         assert a.level == ActivityLevel.WARNING
+
+    def test_level_enum_value_passes_through(self) -> None:
+        """Test enum activity levels are preserved by validator pass-through."""
+        a = ActivityEntry(id=1, level=ActivityLevel.ERROR, message="Bad")
+        assert a.level == ActivityLevel.ERROR
 
 
 class TestVaultApiData:

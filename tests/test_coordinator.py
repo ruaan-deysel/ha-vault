@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from unittest.mock import AsyncMock, MagicMock
 
@@ -123,3 +124,18 @@ async def test_authentication_error_raises_config_entry_auth_failed(
     mock_api_client.async_get_health = AsyncMock(side_effect=VaultAuthenticationError("expired"))
     with pytest.raises(ConfigEntryAuthFailed, match="Authentication failed"):
         await coordinator._async_update_data()  # noqa: SLF001
+
+
+async def test_fetch_job_data_api_error_returns_empty_defaults(
+    coordinator: VaultDataUpdateCoordinator,
+    mock_api_client: MagicMock,
+) -> None:
+    """Test per-job fetch returns empty defaults when job-specific API calls fail."""
+    mock_api_client.async_get_job_history = AsyncMock(side_effect=VaultApiError("boom"))
+    semaphore = asyncio.Semaphore(1)
+
+    job_id, runs, restore_count = await coordinator._fetch_job_data(123, semaphore)  # noqa: SLF001
+
+    assert job_id == 123
+    assert runs == []
+    assert restore_count == 0
