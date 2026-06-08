@@ -19,7 +19,7 @@
     "APT_UPDATE": "0"
   },
   "features": {
-    "ghcr.io/devcontainers/features/node:1": {
+    "ghcr.io/devcontainers/features/node:2": {
       "version": "lts"
     },
     "ghcr.io/devcontainers/features/github-cli:1": {}
@@ -31,6 +31,7 @@
       "onAutoForward": "notify"
     }
   },
+  "onCreateCommand": "apt-get update && apt-get install -y ffmpeg libturbojpeg0 libturbojpeg0-dev",
   "customizations": {
     "vscode": {
       "extensions": [

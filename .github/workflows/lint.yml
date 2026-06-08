@@ -10,11 +10,6 @@ on:
 
 permissions: {}
 
-# IMPORTANT: Keep HA_VERSION synchronized across all workflow files:
-# - copilot-setup-steps.yml
-# - lint.yml
-# - validate.yml (if added in the future)
-
 jobs:
   ruff:
     name: "Ruff"
@@ -29,31 +24,29 @@ jobs:
           python-version: "3.13"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@5a095e7a2014a4212f075830d4f7277575a9d098 # v7.3.1
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           version: "0.9.3"
           enable-cache: true
           cache-dependency-glob: "**/requirements*.txt"
 
-      - name: Get Home Assistant version
-        id: ha_version
-        run: |
-          HA_VERSION=$(grep '"homeassistant"' hacs.json | head -1 | sed 's/.*"homeassistant"\s*:\s*"\([^"]*\)".*/\1/')
-          echo "HA_VERSION=${HA_VERSION}" >> $GITHUB_OUTPUT
-          echo "Home Assistant version: ${HA_VERSION}"
-
       - name: Cache Home Assistant installation
-        uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
             .local/ha-venv
-          key: ha-venv-${{ runner.os }}-py313-ha${{ steps.ha_version.outputs.HA_VERSION }}-${{ hashFiles('**/requirements*.txt') }}
+          key: ha-venv-${{ runner.os }}-py313-lint-${{ hashFiles('requirements_dev.txt') }}
           restore-keys: |
-            ha-venv-${{ runner.os }}-py313-ha${{ steps.ha_version.outputs.HA_VERSION }}-
-            ha-venv-${{ runner.os }}-py313-
+            ha-venv-${{ runner.os }}-py313-lint-
 
-      - name: Install requirements
-        run: script/setup/bootstrap
+      - name: Install lint dependencies
+        run: |
+          if [ ! -d .local/ha-venv ]; then
+            uv venv .local/ha-venv
+          fi
+          source .local/ha-venv/bin/activate
+          uv pip install --upgrade --requirement requirements_dev.txt
+          uv pip install --upgrade ruff
 
       - name: Lint check
         run: script/lint-check

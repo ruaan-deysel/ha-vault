@@ -143,6 +143,7 @@ def mock_vault_data(
     """Return aggregated mock VaultApiData."""
     return VaultApiData(
         health=mock_health,
+        runner_status={"job_id": None, "queue": []},
         settings=mock_settings,
         encryption=mock_encryption,
         storage=mock_storage,
@@ -165,6 +166,7 @@ def mock_api_client(
     """Create a mocked VaultApiClient."""
     client = MagicMock()
     client.async_get_health = AsyncMock(return_value=mock_health)
+    client.async_get_runner_status = AsyncMock(return_value={"job_id": None, "queue": []})
     client.async_ping = AsyncMock(return_value=True)
     client.async_get_settings = AsyncMock(return_value=mock_settings)
     client.async_update_settings = AsyncMock(return_value=mock_settings)

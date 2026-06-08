@@ -38,6 +38,20 @@ class VaultSensorEntityDescription(SensorEntityDescription):
     value_fn: Callable[[VaultApiData], Any]
 
 
+def _runner_queue_length(data: VaultApiData) -> int:
+    """Return current runner queue length."""
+    runner_status = data.runner_status or {}
+    queue = runner_status.get("queue")
+    return len(queue) if isinstance(queue, list) else 0
+
+
+def _runner_current_job_id(data: VaultApiData) -> int | None:
+    """Return current running job id when available."""
+    runner_status = data.runner_status or {}
+    job_id = runner_status.get("job_id")
+    return job_id if isinstance(job_id, int) else None
+
+
 GLOBAL_SENSOR_DESCRIPTIONS: tuple[VaultSensorEntityDescription, ...] = (
     VaultSensorEntityDescription(
         key="vault_status",
@@ -49,6 +63,12 @@ GLOBAL_SENSOR_DESCRIPTIONS: tuple[VaultSensorEntityDescription, ...] = (
         translation_key="vault_version",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.health.version,
+    ),
+    VaultSensorEntityDescription(
+        key="vault_mode",
+        translation_key="vault_mode",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: d.health.mode or "daemon",
     ),
     VaultSensorEntityDescription(
         key="jobs_total",
@@ -72,6 +92,19 @@ GLOBAL_SENSOR_DESCRIPTIONS: tuple[VaultSensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda d: "enabled" if d.encryption.encryption_enabled else "disabled",
+    ),
+    VaultSensorEntityDescription(
+        key="runner_queue_length",
+        translation_key="runner_queue_length",
+        native_unit_of_measurement="jobs",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_runner_queue_length,
+    ),
+    VaultSensorEntityDescription(
+        key="runner_current_job_id",
+        translation_key="runner_current_job_id",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_runner_current_job_id,
     ),
 )
 

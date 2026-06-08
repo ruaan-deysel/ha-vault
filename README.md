@@ -3,22 +3,13 @@
 [![GitHub Release][releases-shield]][releases]
 [![GitHub Activity][commits-shield]][commits]
 [![License][license-shield]](LICENSE)
-
 [![hacs][hacsbadge]][hacs]
-![Project Maintenance][maintenance-shield]
 
-<!--
-Uncomment and customize these badges if you want to use them:
+**Develop in the cloud:** Want to contribute or customize this integration? Open it directly in GitHub Codespaces - no local setup required.
 
-[![BuyMeCoffee][buymecoffeebadge]][buymecoffee]
-[![Discord][discord-shield]][discord]
--->
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ruaan-deysel/ha-vault?quickstart=1)
 
-**✨ Develop in the cloud:** Want to contribute or customize this integration? Open it directly in GitHub Codespaces - no local setup required!
-
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ruaan-deysel/ha-vault-backup?quickstart=1)
-
-## ✨ Features
+## Features
 
 - **Easy Setup**: Simple configuration through the UI - no YAML required
 - **Backup Job Monitoring**: Track status and progress of all your backup jobs
@@ -38,7 +29,7 @@ Uncomment and customize these badges if you want to use them:
 | `binary_sensor` | Connection status, per-job running state and success indicators   |
 | `button`        | Run backup jobs on-demand (one button per job)                    |
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -50,7 +41,7 @@ Uncomment and customize these badges if you want to use them:
 
 Click the button below to open the integration directly in HACS:
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ruaan-deysel&repository=ha-vault-backup&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ruaan-deysel&repository=ha-vault&category=integration)
 
 Then:
 
@@ -92,7 +83,7 @@ The integration will connect to your Vault server and start monitoring your back
 
 #### Option 2: Manual Configuration
 
-1. Go to **Settings** → **Devices & Services**
+1. Go to **Settings** -> **Devices & Services**
 2. Click **"+ Add Integration"**
 3. Search for "Vault"
 4. Follow the same setup steps as Option 1
@@ -101,7 +92,7 @@ The integration will connect to your Vault server and start monitoring your back
 
 After setup, check that the integration is working:
 
-1. Go to **Settings** → **Devices & Services** → **Vault**
+1. Go to **Settings** -> **Devices & Services** -> **Vault**
 2. You should see sensors for:
    - Vault Status (should show "ok" or "healthy")
    - Vault Online (binary sensor - should be "On")
@@ -113,11 +104,12 @@ The integration creates entities for monitoring and controlling your Vault backu
 
 - **Global Sensors**: Vault status, version, job counts, encryption status
 - **Per-Job Sensors**: Job status, last run time, backup size, duration, etc.
+- **Per-Storage Sensors**: Storage destination name and type
 - **Global Binary Sensors**: Connection status
 - **Per-Job Binary Sensors**: Running state, last success indicator
 - **Per-Job Buttons**: Run backup job on-demand
 
-Find all entities in **Settings** → **Devices & Services** → **Vault** → click on the device.
+Find all entities in **Settings** -> **Devices & Services** -> **Vault** -> click on the device.
 
 ## Available Entities
 
@@ -144,8 +136,11 @@ For each backup job configured in Vault, the integration creates sensors to moni
   - States: `idle`, `running`, `completed`, `failed`
 - **Last Run** (Diagnostic): Timestamp of the last backup run
 - **Last Run Duration** (Diagnostic): How long the last backup took (in seconds)
-- **Total Runs** (Diagnostic): Total number of times this job has run
 - **Last Backup Size** (Diagnostic): Size of the last backup (in bytes/MB/GB)
+- **Items Backed Up**: Number of items successfully processed in the latest run
+- **Items Failed**: Number of failed items in the latest run
+- **Restore Points** (Diagnostic): Current restore point count for this job
+- **Last Failure Reason** (Diagnostic): Parsed failure reason from the latest non-successful run
 - **Last Run Progress** (Diagnostic): Completion percentage during active backup (0-100%)
 
 ### Global Binary Sensors
@@ -177,6 +172,13 @@ For each backup job, the integration creates a button:
   - Real-time progress updates via WebSocket
   - Coordinator refreshes automatically after triggering
 
+### Per-Storage Sensors
+
+For each configured storage destination, the integration creates sensors:
+
+- **Storage Name** (Diagnostic): Display name of the storage destination
+- **Storage Type** (Diagnostic): Backend type (for example, local, SMB, S3)
+
 ## Custom Services
 
 The integration provides powerful services for backup management and automation:
@@ -189,6 +191,7 @@ Trigger an immediate backup run for a specific Vault job. You can specify the jo
 
 - `job_id` (optional): The numeric ID of the backup job to run
 - `job_name` (optional): The name of the backup job to run
+- `config_entry_id` (optional): Target Vault config entry ID (required only when multiple Vault instances are configured)
 
 > **Note:** Provide either `job_id` or `job_name`, not both.
 
@@ -208,6 +211,15 @@ data:
   job_name: "My Important Backups"
 ```
 
+**Example targeting a specific Vault config entry:**
+
+```yaml
+action: vault.run_backup
+data:
+  job_id: 1
+  config_entry_id: "01JABCDEF1234567890XYZ"
+```
+
 ### `vault.restore`
 
 Restore an item from a Vault backup restore point. This allows you to restore containers, VMs, or folders directly from Home Assistant.
@@ -220,6 +232,7 @@ Restore an item from a Vault backup restore point. This allows you to restore co
 - `item_type` (required): Type of item - `container`, `vm`, or `folder`
 - `passphrase` (optional): Encryption passphrase if the backup was encrypted
 - `destination` (optional): Override the default restore destination path
+- `config_entry_id` (optional): Target Vault config entry ID (required only when multiple Vault instances are configured)
 
 **Example restoring a container:**
 
@@ -252,6 +265,7 @@ Test connectivity to a Vault storage destination. Useful for verifying storage c
 **Parameters:**
 
 - `storage_id` (required): The ID of the storage destination to test
+- `config_entry_id` (optional): Target Vault config entry ID (required only when multiple Vault instances are configured)
 
 **Example:**
 
@@ -338,7 +352,7 @@ automation:
       - action: notify.persistent_notification
         data:
           title: "Backup Running"
-          message: "Backup job started. Current progress: {{ states('sensor.my_backup_job_last_run_progress') }}%"
+          message: "Backup job started. Current progress: {{ states('sensor.my_backup_job_progress') }}%"
 ```
 
 ## Configuration Options
@@ -356,9 +370,9 @@ automation:
 
 You can change connection settings anytime:
 
-1. Go to **Settings** → **Devices & Services**
+1. Go to **Settings** -> **Devices & Services**
 2. Find **Vault**
-3. Click the **3 dots menu** → **Reconfigure**
+3. Click the **3 dots menu** -> **Reconfigure**
 4. Update the connection settings
 5. Click Submit
 
@@ -380,7 +394,7 @@ If the **Vault Online** binary sensor shows "Off":
 
 If your Vault server uses HTTPS:
 
-1. Go to **Settings** → **Devices & Services** → **Vault**
+1. Go to **Settings** -> **Devices & Services** -> **Vault**
 2. Click **Reconfigure**
 3. Enable the **TLS** option
 4. Click Submit
@@ -398,7 +412,7 @@ logger:
 
 Then restart Home Assistant. Check the logs at:
 
-- **Settings** → **System** → **Logs**
+- **Settings** -> **System** -> **Logs**
 - Or in `config/home-assistant.log`
 
 ### Common Issues
@@ -407,7 +421,7 @@ Then restart Home Assistant. Check the logs at:
 
 If you receive connection errors:
 
-1. Verify the Vault server is running: `curl http://YOUR_HOST:24085/health`
+1. Verify the Vault server is running: `curl http://YOUR_HOST:24085/api/v1/health`
 2. Check the host and port settings in the integration configuration
 3. Verify network connectivity between Home Assistant and Vault server
 4. Check firewall rules on both sides
@@ -420,7 +434,7 @@ If you receive API-related errors:
 1. Verify your API key is correct (if authentication is required)
 2. Check the Vault server logs for detailed error messages
 3. Ensure your Vault version is compatible
-4. Download diagnostics (Settings → Devices & Services → Vault → 3 dots → Download diagnostics)
+4. Download diagnostics (Settings -> Devices & Services -> Vault -> 3 dots -> Download diagnostics)
 
 #### No Entities Appearing
 
@@ -429,7 +443,7 @@ If entities aren't showing up:
 1. Verify the **Vault Online** sensor shows "On"
 2. Check that backup jobs are configured in Vault
 3. Wait for the initial data fetch (up to 1 minute)
-4. Reload the integration (Settings → Devices & Services → Vault → 3 dots → Reload)
+4. Reload the integration (Settings -> Devices & Services -> Vault -> 3 dots -> Reload)
 5. Check logs for errors
 
 #### WebSocket Connection Issues
@@ -441,11 +455,11 @@ If real-time updates aren't working:
 3. Verify the Vault server supports WebSocket connections
 4. Check logs for WebSocket-specific errors
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please open an issue or pull request if you have suggestions or improvements.
 
-### 🛠️ Development Setup
+### Development Setup
 
 Want to contribute or customize this integration? You have two options:
 
@@ -453,12 +467,12 @@ Want to contribute or customize this integration? You have two options:
 
 The easiest way to get started - develop directly in your browser with GitHub Codespaces:
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ruaan-deysel/ha-vault-backup?quickstart=1)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ruaan-deysel/ha-vault?quickstart=1)
 
-- ✅ Zero local setup required
-- ✅ Pre-configured development environment
-- ✅ Home Assistant included for testing
-- ✅ 60 hours/month free for personal accounts
+- Zero local setup required
+- Pre-configured development environment
+- Home Assistant included for testing
+- 60 hours/month free for personal accounts
 
 #### Local Development
 
@@ -473,52 +487,16 @@ Then:
 2. Open in VS Code
 3. Click "Reopen in Container" when prompted
 
-Both options give you the same fully-configured development environment with Home Assistant, Python 3.13, and all necessary tools.
+Both options give you the same fully-configured development environment with Home Assistant, Python 3.14, and all necessary tools.
 
----
-
-## 🤖 AI-Assisted Development
-
-> **ℹ️ Transparency Notice**
->
-> This integration was developed with assistance from AI coding agents (GitHub Copilot, Claude, and others). While the codebase follows Home Assistant Core standards, AI-generated code may not be reviewed or tested to the same extent as manually written code.
->
-> AI tools were used to:
->
-> - Generate boilerplate code following Home Assistant patterns
-> - Implement standard integration features (config flow, coordinator, entities)
-> - Ensure code quality and type safety
-> - Write documentation and comments
->
-> Please be aware that AI-assisted development may result in unexpected behavior or edge cases that haven't been thoroughly tested. If you encounter any issues, please [open an issue](../../issues) on GitHub.
->
-> _Note: This section can be removed or modified if AI assistance was not used in your integration's development._
-
----
-
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
----
-
-**Made with ❤️ by [@ruaan-deysel][user_profile]**
-
----
-
-[commits-shield]: https://img.shields.io/github/commit-activity/y/ruaan-deysel/ha-vault-backup.svg?style=for-the-badge
-[commits]: https://github.com/ruaan-deysel/ha-vault-backup/commits/main
+[commits-shield]: https://img.shields.io/github/commit-activity/y/ruaan-deysel/ha-vault.svg?style=for-the-badge
+[commits]: https://github.com/ruaan-deysel/ha-vault/commits/main
 [hacs]: https://github.com/hacs/integration
 [hacsbadge]: https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge
-[license-shield]: https://img.shields.io/github/license/ruaan-deysel/ha-vault-backup.svg?style=for-the-badge
-[maintenance-shield]: https://img.shields.io/badge/maintainer-%40ruaan-deysel-blue.svg?style=for-the-badge
-[releases-shield]: https://img.shields.io/github/release/ruaan-deysel/ha-vault-backup.svg?style=for-the-badge
-[releases]: https://github.com/ruaan-deysel/ha-vault-backup/releases
-[user_profile]: https://github.com/ruaan-deysel
-
-<!-- Optional badge definitions - uncomment if needed:
-[buymecoffee]: https://www.buymeacoffee.com/ruaan-deysel
-[buymecoffeebadge]: https://img.shields.io/badge/buy%20me%20a%20coffee-donate-yellow.svg?style=for-the-badge
-[discord]: https://discord.gg/Qa5fW2R
-[discord-shield]: https://img.shields.io/discord/330944238910963714.svg?style=for-the-badge
--->
+[license-shield]: https://img.shields.io/github/license/ruaan-deysel/ha-vault.svg?style=for-the-badge
+[releases-shield]: https://img.shields.io/github/release/ruaan-deysel/ha-vault.svg?style=for-the-badge
+[releases]: https://github.com/ruaan-deysel/ha-vault/releases
