@@ -1,5 +1,7 @@
 """Tests for the Vault API client."""
 
+# ruff: noqa: SLF001, S108
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
@@ -46,6 +48,7 @@ def _mock_response(*, status: int = 200, json_data: dict | list | None = None, t
     response.status = status
     response.json = AsyncMock(return_value=json_data)
     response.text = AsyncMock(return_value=text)
+    response.read = AsyncMock(return_value=b"")
     return response
 
 
@@ -338,3 +341,200 @@ class TestAuthHeaders:
         """Test TLS client uses https scheme."""
         tls_client = VaultApiClient(host=MOCK_HOST, port=MOCK_PORT, session=mock_session, tls=True)
         assert tls_client.base_url == f"https://{MOCK_HOST}:{MOCK_PORT}"
+
+
+class TestExpandedEndpointCoverage:
+    """Cover the expanded endpoint surface added to the API client."""
+
+    async def test_with_query_helper(self, client: VaultApiClient) -> None:
+        """Test query helper handles empty and populated params."""
+        assert client._with_query("/api/v1/test") == "/api/v1/test"
+        assert client._with_query("/api/v1/test", {"a": 1, "b": None}) == "/api/v1/test?a=1"
+
+    async def test_core_extended_methods(self, client: VaultApiClient) -> None:
+        """Test additional core endpoint wrappers."""
+        client._request = AsyncMock(return_value={"ok": True})
+
+        await client.async_get_health_summary()
+        await client.async_get_runner_status()
+        await client.async_get_release_changelog()
+        await client.async_get_release_latest()
+
+        assert client._request.await_count == 4
+
+    async def test_settings_extended_methods(self, client: VaultApiClient) -> None:
+        """Test additional settings endpoint wrappers."""
+        client._request = AsyncMock(return_value={"ok": True})
+
+        await client.async_set_encryption({"passphrase": "abc"})
+        await client.async_verify_encryption({"passphrase": "abc"})
+        await client.async_get_encryption_passphrase()
+        await client.async_get_staging_info()
+        await client.async_set_staging_override({"path": "/tmp/stage"})
+        await client.async_get_database_settings()
+        await client.async_update_database_settings({"snapshot_path": "/tmp/db"})
+        await client.async_test_discord_webhook({"webhook": "https://example.invalid"})
+        await client.async_get_api_key_status()
+        await client.async_get_api_key()
+        await client.async_generate_api_key()
+        await client.async_rotate_api_key()
+        await client.async_revoke_api_key()
+
+        assert client._request.await_count == 13
+
+    async def test_download_diagnostics_uses_bytes(self, client: VaultApiClient) -> None:
+        """Test diagnostics endpoint requests byte response mode."""
+        client._request = AsyncMock(return_value=b"zip-bytes")
+        result = await client.async_download_diagnostics()
+        assert result == b"zip-bytes"
+        call = client._request.await_args
+        assert call is not None
+        assert call.args[0] == "GET"
+        assert call.args[1].endswith("/settings/diagnostics")
+        assert call.kwargs["expect_json"] is False
+        assert call.kwargs["expect_bytes"] is True
+
+    async def test_storage_extended_methods(self, client: VaultApiClient) -> None:
+        """Test additional storage endpoint wrappers."""
+        client._request = AsyncMock(return_value={"ok": True})
+
+        await client.async_create_storage({"name": "S3"})
+        client._request.return_value = {"id": 1, "name": "Local", "type": "local"}
+        destination = await client.async_get_storage_destination(1)
+        assert destination.id == 1
+
+        client._request.return_value = {"ok": True}
+        await client.async_update_storage_destination(1, {"name": "Renamed"})
+        await client.async_delete_storage_destination(1, force=True, delete_files=True)
+        await client.async_health_check_storage(1)
+        await client.async_capacity_check_storage(1)
+        await client.async_close_storage_breaker(1)
+        await client.async_scan_storage_orphans(1)
+        await client.async_delete_storage_orphans(1, {"paths": ["a"]})
+        await client.async_get_storage_dedup_stats(1)
+        await client.async_run_storage_gc(1)
+        await client.async_scan_storage(1)
+        await client.async_import_storage(1)
+        await client.async_restore_storage_database(1, {"confirm": True})
+        await client.async_get_storage_jobs(1)
+        await client.async_list_storage_files(1, path="vault")
+
+        client._request.return_value = b"file-bytes"
+        downloaded = await client.async_download_storage_file(1, path="vault/file.tar")
+        assert downloaded == b"file-bytes"
+
+    async def test_job_extended_methods(self, client: VaultApiClient) -> None:
+        """Test additional job endpoint wrappers."""
+        client._request = AsyncMock(return_value={"ok": True})
+
+        await client.async_create_job({"name": "New Job"})
+        await client.async_update_job(1, {"name": "Updated"})
+        await client.async_delete_job(1)
+        await client.async_get_next_runs()
+        await client.async_get_next_run(1)
+
+        client._request.return_value = [{"id": 1}]
+        assert await client.async_get_retention_preview(1, limit=10) == [{"id": 1}]
+
+        client._request.return_value = {}
+        assert await client.async_get_retention_preview(1) == []
+
+        client._request.return_value = "ok"
+        await client.async_delete_restore_point(1, 10)
+
+        client._request.return_value = {"files": []}
+        assert await client.async_get_restore_point_contents(1, 10, item="myapp") == {"files": []}
+
+        client._request.return_value = [{"name": "a"}]
+        assert await client.async_get_restore_point_contents(1, 10, item="myapp") == [{"name": "a"}]
+
+        client._request.return_value = None
+        assert await client.async_get_restore_point_contents(1, 10, item="myapp") == []
+
+        client._request.return_value = {"ok": True}
+        await client.async_verify_restore_point(1, 10)
+
+        client._request.return_value = [{"id": 1}]
+        assert await client.async_get_restore_point_verify_runs(1, 10) == [{"id": 1}]
+
+        client._request.return_value = {}
+        assert await client.async_get_restore_point_verify_runs(1, 10) == []
+
+        client._request.return_value = {"id": 99}
+        await client.async_get_verify_run(1, 99)
+        await client.async_cancel_job(1)
+
+        client._request.return_value = [{"id": 1}]
+        assert await client.async_get_stale_items(1) == [{"id": 1}]
+
+        client._request.return_value = {}
+        assert await client.async_get_stale_items(1) == []
+
+        client._request.return_value = {"ok": True}
+        await client.async_remove_stale_items(1, {"items": [1]})
+        await client.async_delete_job_item(1, 2)
+
+    async def test_activity_discovery_replication_and_recovery_methods(self, client: VaultApiClient) -> None:
+        """Test remaining endpoint wrapper groups and list fallbacks."""
+        client._request = AsyncMock(return_value={"ok": True})
+
+        await client.async_purge_activity()
+        await client.async_purge_history()
+        await client.async_browse(path="/mnt")
+        await client.async_path_exists(path="/mnt")
+
+        client._request.return_value = [{"id": 1}]
+        assert await client.async_get_containers() == [{"id": 1}]
+        assert await client.async_get_vms() == [{"id": 1}]
+        assert await client.async_get_folders() == [{"id": 1}]
+        assert await client.async_get_plugins() == [{"id": 1}]
+        assert await client.async_get_zfs_datasets() == [{"id": 1}]
+        assert await client.async_get_presets_exclusions(image="x") == [{"id": 1}]
+        assert await client.async_get_replication_sources() == [{"id": 1}]
+
+        client._request.return_value = {}
+        assert await client.async_get_containers() == []
+        assert await client.async_get_vms() == []
+        assert await client.async_get_folders() == []
+        assert await client.async_get_plugins() == []
+        assert await client.async_get_zfs_datasets() == []
+        assert await client.async_get_presets_exclusions() == []
+        assert await client.async_get_replication_sources() == []
+
+        client._request.return_value = {"ok": True}
+        await client.async_create_replication_source({"name": "source"})
+        await client.async_test_replication_url({"url": "http://example.invalid"})
+        await client.async_get_replication_source(1)
+        await client.async_update_replication_source(1, {"name": "x"})
+        await client.async_delete_replication_source(1)
+        await client.async_test_replication_source(1)
+        await client.async_sync_replication_source(1)
+
+        client._request.return_value = [{"id": 1}]
+        assert await client.async_get_replication_jobs(1) == [{"id": 1}]
+
+        client._request.return_value = {}
+        assert await client.async_get_replication_jobs(1) == []
+
+        client._request.return_value = [{"id": 1}]
+        assert await client.async_get_anomalies(limit=10) == [{"id": 1}]
+
+        client._request.return_value = {}
+        assert await client.async_get_anomalies() == []
+
+        client._request.return_value = {"ok": True}
+        await client.async_ack_bulk_anomalies({"ids": [1]})
+        await client.async_get_anomaly(1)
+        await client.async_ack_anomaly(1)
+        await client.async_get_job_baseline(1)
+        await client.async_get_destination_capacity_trajectory(1)
+        await client.async_get_recovery_plan()
+
+    async def test_request_returns_bytes_when_requested(self, client: VaultApiClient, mock_session: MagicMock) -> None:
+        """Test internal _request helper returns raw bytes when expected."""
+        resp = _mock_response(json_data=None)
+        resp.read = AsyncMock(return_value=b"raw")
+        mock_session.request = AsyncMock(return_value=resp)
+
+        result = await client._request("GET", "/api/v1/file", expect_json=False, expect_bytes=True)
+        assert result == b"raw"

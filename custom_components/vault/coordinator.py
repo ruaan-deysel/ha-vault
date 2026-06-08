@@ -79,6 +79,7 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
         """
         try:
             health = await self.client.async_get_health()
+            runner_status = await self.client.async_get_runner_status()
             settings = await self.client.async_get_settings()
             encryption = await self.client.async_get_encryption_status()
             storage = await self.client.async_get_storage()
@@ -100,6 +101,7 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
 
         data = VaultApiData(
             health=health,
+            runner_status=runner_status,
             settings=settings,
             encryption=encryption,
             storage=storage,

@@ -15,7 +15,7 @@ from custom_components.vault.api.models import (
     VaultApiData,
 )
 from custom_components.vault.const import DOMAIN
-from custom_components.vault.sensor import _job_last_size, _job_restore_points
+from custom_components.vault.sensor import _job_last_failure_reason, _job_last_size, _job_restore_points
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
@@ -29,12 +29,13 @@ async def test_global_sensors_created(
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
     sensor_entries = [e for e in entries if e.domain == "sensor"]
 
-    # Global: vault_status, vault_version, jobs_total, jobs_enabled, encryption_status (5)
+    # Global: vault_status, vault_version, vault_mode, jobs_total, jobs_enabled,
+    # encryption_status, runner_queue_length, runner_current_job_id (8)
     # Per-job: 3 jobs x 8 sensors = 24
     # Per-job progress: 3 jobs x 1 = 3
     # Per-storage: 2 storage x 2 sensors = 4
-    # Total: 36
-    assert len(sensor_entries) == 36
+    # Total: 39
+    assert len(sensor_entries) == 39
 
 
 async def test_vault_status_sensor(
@@ -324,3 +325,81 @@ async def test_dynamic_storage_detection(
     storage_entries = [e for e in entries if "storage_" in e.unique_id]
     # 3 storage * 2 sensors = 6
     assert len(storage_entries) == 6
+
+
+async def test_job_last_failure_reason_from_dict(mock_vault_data: VaultApiData) -> None:
+    """Test failure reason extraction from dict-shaped JSON logs."""
+    failed_run = JobRun(id=500, job_id=9, status=JobRunStatus.FAILED, log='{"error":"disk full"}')
+    data = mock_vault_data.model_copy(update={"job_runs": {9: [failed_run]}})
+
+    assert _job_last_failure_reason(data, 9) == "disk full"
+
+
+async def test_job_last_failure_reason_from_list_items(mock_vault_data: VaultApiData) -> None:
+    """Test failure reason extraction from list-shaped JSON logs."""
+    failed_log = (
+        '[{"status":"completed","name":"ok"},{"status":"failed","name":"db"},{"status":"error","item_name":"cache"}]'
+    )
+    failed_run = JobRun(id=501, job_id=10, status=JobRunStatus.FAILED, log=failed_log)
+    data = mock_vault_data.model_copy(update={"job_runs": {10: [failed_run]}})
+
+    assert _job_last_failure_reason(data, 10) == "Failed items: db, cache"
+
+
+async def test_job_last_failure_reason_invalid_json(mock_vault_data: VaultApiData) -> None:
+    """Test fallback to raw truncated log when JSON decoding fails."""
+    long_log = "x" * 300
+    failed_run = JobRun(id=502, job_id=11, status=JobRunStatus.FAILED, log=long_log)
+    data = mock_vault_data.model_copy(update={"job_runs": {11: [failed_run]}})
+
+    assert _job_last_failure_reason(data, 11) == long_log[:255]
+
+
+async def test_storage_type_string_passthrough(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """Test storage type sensor stringifies unknown non-enum storage types."""
+    coordinator = mock_setup_entry.runtime_data.coordinator
+    custom_storage = StorageDestination(id=77, name="Custom", type="rclone")
+
+    coordinator.data = VaultApiData(
+        health=coordinator.data.health,
+        settings=coordinator.data.settings,
+        encryption=coordinator.data.encryption,
+        storage=[custom_storage],
+        jobs=coordinator.data.jobs,
+        job_runs=coordinator.data.job_runs,
+        restore_point_counts=coordinator.data.restore_point_counts,
+        activity=coordinator.data.activity,
+    )
+    coordinator.async_set_updated_data(coordinator.data)
+    await hass.async_block_till_done()
+
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
+    type_entry = next((e for e in entries if "storage_custom_type" in e.unique_id), None)
+    assert type_entry is not None
+
+    state = hass.states.get(type_entry.entity_id)
+    assert state is not None
+    assert state.state == "rclone"
+
+
+async def test_job_last_failure_reason_no_run_returns_none(mock_vault_data: VaultApiData) -> None:
+    """Test no-run branch for last failure reason helper."""
+    assert _job_last_failure_reason(mock_vault_data, 9999) is None
+
+
+async def test_job_last_failure_reason_completed_returns_none(mock_vault_data: VaultApiData) -> None:
+    """Test completed/running status branch returns no failure reason."""
+    completed_run = JobRun(id=600, job_id=12, status=JobRunStatus.COMPLETED, log="{}")
+    data = mock_vault_data.model_copy(update={"job_runs": {12: [completed_run]}})
+    assert _job_last_failure_reason(data, 12) is None
+
+
+async def test_job_last_failure_reason_fallback_status_text(mock_vault_data: VaultApiData) -> None:
+    """Test fallback reason when parsed list has no failed dict items."""
+    failed_run = JobRun(id=601, job_id=13, status=JobRunStatus.FAILED, log='[1,{"status":"ok","name":"x"}]')
+    data = mock_vault_data.model_copy(update={"job_runs": {13: [failed_run]}})
+    assert _job_last_failure_reason(data, 13) == "Last run status: failed"
