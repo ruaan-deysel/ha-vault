@@ -6,7 +6,7 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ## [Unreleased]
 
-## [2024.06.01] - Initial release
+## [2024.06.00] - Initial release
 
 ### Added
 
