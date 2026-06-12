@@ -54,7 +54,7 @@ async def test_per_job_running_sensor(
 
     # Job 1 "Daily Backup" — mock_api_client returns COMPLETED, not running
     daily_running = next(
-        (e for e in entries if "daily_backup_running" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_1_running"),
         None,
     )
     assert daily_running is not None
@@ -72,7 +72,7 @@ async def test_per_job_last_success_sensor(
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
 
     daily_success = next(
-        (e for e in entries if "daily_backup_last_success" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_1_last_success"),
         None,
     )
     assert daily_success is not None
@@ -91,7 +91,7 @@ async def test_disabled_job_has_no_run(
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
 
     disabled_running = next(
-        (e for e in entries if "disabled_job_running" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_3_running"),
         None,
     )
     assert disabled_running is not None

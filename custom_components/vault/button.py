@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import re
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.core import HomeAssistant, callback
@@ -14,14 +13,9 @@ from .api import VaultApiError, VaultConnectionError
 from .api.models import BackupJob
 from .const import DOMAIN
 from .coordinator import VaultConfigEntry, VaultDataUpdateCoordinator
-from .entity import VaultEntity
+from .entity import VaultJobEntity, async_prune_orphan_entities, async_remove_stale_entities
 
 PARALLEL_UPDATES = 1
-
-
-def _slugify_job_name(name: str) -> str:
-    """Convert a job name to a slug suitable for entity IDs."""
-    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -38,19 +32,33 @@ async def async_setup_entry(
     coordinator = entry.runtime_data.coordinator
     known_jobs: set[int] = set()
 
+    # One-time prune of registry entries left over from jobs deleted while
+    # Home Assistant was not running, or from older integration versions with
+    # name-based unique IDs. Runs before adding entities so freed entity_ids
+    # can be reclaimed.
+    valid_uids = {f"{entry.entry_id}_job_{job.id}_run_now" for job in coordinator.data.jobs}
+    async_prune_orphan_entities(hass, entry.entry_id, "button", valid_uids)
+
     @callback
     def _check_jobs() -> None:
-        current_jobs = {job.id for job in coordinator.data.jobs}
-        new_jobs = current_jobs - known_jobs
+        current = {job.id for job in coordinator.data.jobs}
+
+        # Drop entities for deleted jobs
+        removed = known_jobs - current
+        if removed:
+            known_jobs.difference_update(removed)
+            stale_uids = {f"{entry.entry_id}_job_{job_id}_run_now" for job_id in removed}
+            async_remove_stale_entities(hass, "button", stale_uids)
+
+        new_jobs = current - known_jobs
         if new_jobs:
             known_jobs.update(new_jobs)
             entities: list[VaultJobButton] = []
             for job in coordinator.data.jobs:
                 if job.id not in new_jobs:
                     continue
-                slug = _slugify_job_name(job.name)
                 description = VaultButtonEntityDescription(
-                    key=f"{slug}_run_now",
+                    key=f"job_{job.id}_run_now",
                     translation_key="run_backup",
                 )
                 entities.append(VaultJobButton(coordinator, description, job))
@@ -60,7 +68,7 @@ async def async_setup_entry(
     entry.async_on_unload(coordinator.async_add_listener(_check_jobs))
 
 
-class VaultJobButton(ButtonEntity, VaultEntity):
+class VaultJobButton(ButtonEntity, VaultJobEntity):
     """Button that triggers a specific backup job."""
 
     entity_description: VaultButtonEntityDescription
@@ -72,10 +80,8 @@ class VaultJobButton(ButtonEntity, VaultEntity):
         job: BackupJob,
     ) -> None:
         """Initialize the button."""
-        super().__init__(coordinator, description)
+        super().__init__(coordinator, description, job, "run now")
         self.entity_description = description
-        self._job_id = job.id
-        self._attr_name = f"{job.name} run now"
 
     async def async_press(self) -> None:
         """Trigger the backup job via POST /jobs/{id}/run."""

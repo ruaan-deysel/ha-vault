@@ -123,11 +123,11 @@ class TestStorageEndpoints:
         assert len(result) == 1
         assert isinstance(result[0], StorageDestination)
 
-    async def test_get_storage_empty(self, client: VaultApiClient, mock_session: MagicMock) -> None:
-        """Test GET /storage with non-list response."""
+    async def test_get_storage_non_list_raises(self, client: VaultApiClient, mock_session: MagicMock) -> None:
+        """Test GET /storage raises on a non-list response (protects entity pruning)."""
         mock_session.request = AsyncMock(return_value=_mock_response(json_data={}))
-        result = await client.async_get_storage()
-        assert result == []
+        with pytest.raises(VaultApiError, match="Unexpected response for storage list"):
+            await client.async_get_storage()
 
     async def test_test_storage(self, client: VaultApiClient, mock_session: MagicMock) -> None:
         """Test POST /storage/{id}/test."""
@@ -153,11 +153,11 @@ class TestJobEndpoints:
         assert len(result) == 1
         assert isinstance(result[0], BackupJob)
 
-    async def test_get_jobs_empty(self, client: VaultApiClient, mock_session: MagicMock) -> None:
-        """Test GET /jobs with non-list response."""
+    async def test_get_jobs_non_list_raises(self, client: VaultApiClient, mock_session: MagicMock) -> None:
+        """Test GET /jobs raises on a non-list response (protects entity pruning)."""
         mock_session.request = AsyncMock(return_value=_mock_response(json_data={}))
-        result = await client.async_get_jobs()
-        assert result == []
+        with pytest.raises(VaultApiError, match="Unexpected response for jobs list"):
+            await client.async_get_jobs()
 
     async def test_get_job(self, client: VaultApiClient, mock_session: MagicMock) -> None:
         """Test GET /jobs/{id}."""

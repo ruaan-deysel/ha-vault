@@ -36,7 +36,7 @@ async def test_button_press(
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
     daily_button = next(
-        (e for e in entries if "daily_backup_run_now" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_1_run_now"),
         None,
     )
     assert daily_button is not None
@@ -61,7 +61,7 @@ async def test_button_press_connection_error(
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
     daily_button = next(
-        (e for e in entries if "daily_backup_run_now" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_1_run_now"),
         None,
     )
     assert daily_button is not None
@@ -86,7 +86,7 @@ async def test_button_press_api_error(
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
     daily_button = next(
-        (e for e in entries if "daily_backup_run_now" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_1_run_now"),
         None,
     )
     assert daily_button is not None

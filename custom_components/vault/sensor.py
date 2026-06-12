@@ -3,27 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
-import re
 from typing import Any
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorEntityDescription
-from homeassistant.const import EntityCategory, UnitOfInformation, UnitOfTime
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfInformation
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .api.models import BackupJob, JobRun, StorageDestination, StorageType, VaultApiData
-from .const import DOMAIN
+from .api.models import BackupJob, JobRun, StorageDestination, StorageType, VaultApiData, WebSocketEvent
 from .coordinator import VaultConfigEntry, VaultDataUpdateCoordinator
-from .entity import VaultEntity
+from .entity import VaultEntity, VaultJobEntity, async_prune_orphan_entities, async_remove_stale_entities
 
-PARALLEL_UPDATES = 1
-
-
-def _slugify_job_name(name: str) -> str:
-    """Convert a job name to a slug suitable for entity IDs."""
-    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+PARALLEL_UPDATES = 0
 
 
 # ---------------------------------------------------------------------------
@@ -45,11 +38,27 @@ def _runner_queue_length(data: VaultApiData) -> int:
     return len(queue) if isinstance(queue, list) else 0
 
 
-def _runner_current_job_id(data: VaultApiData) -> int | None:
-    """Return current running job id when available."""
+def _runner_current_job(data: VaultApiData) -> str:
+    """Return the name of the currently running job, or "idle" when none."""
     runner_status = data.runner_status or {}
     job_id = runner_status.get("job_id")
-    return job_id if isinstance(job_id, int) else None
+    if not isinstance(job_id, int):
+        return "idle"
+    job = next((j for j in data.jobs if j.id == job_id), None)
+    return job.name if job else str(job_id)
+
+
+def _auto_data_size_unit(num_bytes: float | None) -> UnitOfInformation | None:
+    """Pick a display unit so a byte count reads naturally (TB/GB/MB)."""
+    if not num_bytes or num_bytes <= 0:
+        return None
+    if num_bytes >= 1_000_000_000_000:
+        return UnitOfInformation.TERABYTES
+    if num_bytes >= 1_000_000_000:
+        return UnitOfInformation.GIGABYTES
+    if num_bytes >= 1_000_000:
+        return UnitOfInformation.MEGABYTES
+    return UnitOfInformation.KILOBYTES
 
 
 GLOBAL_SENSOR_DESCRIPTIONS: tuple[VaultSensorEntityDescription, ...] = (
@@ -104,7 +113,7 @@ GLOBAL_SENSOR_DESCRIPTIONS: tuple[VaultSensorEntityDescription, ...] = (
         key="runner_current_job_id",
         translation_key="runner_current_job_id",
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=_runner_current_job_id,
+        value_fn=_runner_current_job,
     ),
 )
 
@@ -130,6 +139,7 @@ class VaultJobSensorEntityDescription(SensorEntityDescription):
     """Describes a per-job Vault sensor entity."""
 
     value_fn: Callable[[VaultApiData, int], Any]
+    attributes_fn: Callable[[VaultApiData, int], dict[str, Any] | None] | None = None
 
 
 _JOB_SENSOR_LABELS: dict[str, str] = {
@@ -162,10 +172,30 @@ def _job_last_size(data: VaultApiData, job_id: int) -> int | None:
     return run.size_bytes if run else None
 
 
-def _job_last_duration(data: VaultApiData, job_id: int) -> int | None:
-    """Return duration of the most recent run in seconds."""
+def _format_duration(seconds: int) -> str:
+    """Format a duration in seconds as a compact human-readable string.
+
+    Examples: "45s", "3m 29s", "1h 12m".
+    """
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m {secs}s" if secs else f"{minutes}m"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+
+
+def _job_last_duration(data: VaultApiData, job_id: int) -> str | None:
+    """Return the duration of the most recent run as a human-readable string."""
     run = _latest_run(data, job_id)
-    return run.duration_seconds if run else None
+    return _format_duration(run.duration_seconds) if run else None
+
+
+def _job_last_duration_attributes(data: VaultApiData, job_id: int) -> dict[str, Any] | None:
+    """Expose the raw duration in seconds for automations and templates."""
+    run = _latest_run(data, job_id)
+    return {"duration_seconds": run.duration_seconds} if run else None
 
 
 def _job_items_backed_up(data: VaultApiData, job_id: int) -> int:
@@ -185,15 +215,15 @@ def _job_restore_points(data: VaultApiData, job_id: int) -> int:
     return data.restore_point_counts.get(job_id, 0)
 
 
-def _job_last_failure_reason(data: VaultApiData, job_id: int) -> str | None:
-    """Return a compact failure reason for the latest run when not successful."""
+def _job_last_failure_reason(data: VaultApiData, job_id: int) -> str:
+    """Return a compact failure reason for the latest run, or "No failures"."""
     run = _latest_run(data, job_id)
     if not run:
-        return None
+        return "No failures"
 
     status = _status_text(run.status)
     if status in {"completed", "running"}:
-        return None
+        return "No failures"
 
     if run.log:
         try:
@@ -229,6 +259,18 @@ def _storage_type_text(storage: StorageDestination) -> str:
     return str(storage.type)
 
 
+def _storage_capacity_value(storage: StorageDestination, field: str) -> int | None:
+    """Return a capacity metric, or None when the destination reports no capacity.
+
+    Remote destinations (S3, WebDAV, ...) may not support capacity probing —
+    showing "0 bytes free" there would be misleading.
+    """
+    capacity = storage.capacity
+    if capacity is None or not capacity.total_bytes:
+        return None
+    return getattr(capacity, field)
+
+
 def _job_sensor_descriptions() -> tuple[VaultJobSensorEntityDescription, ...]:
     """Return per-job sensor description templates."""
     return (
@@ -248,7 +290,8 @@ def _job_sensor_descriptions() -> tuple[VaultJobSensorEntityDescription, ...]:
             translation_key="job_last_size",
             device_class=SensorDeviceClass.DATA_SIZE,
             native_unit_of_measurement=UnitOfInformation.BYTES,
-            suggested_display_precision=0,
+            suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
+            suggested_display_precision=2,
             entity_category=EntityCategory.DIAGNOSTIC,
             entity_registry_enabled_default=False,
             value_fn=_job_last_size,
@@ -256,10 +299,9 @@ def _job_sensor_descriptions() -> tuple[VaultJobSensorEntityDescription, ...]:
         VaultJobSensorEntityDescription(
             key="last_duration",
             translation_key="job_last_duration",
-            device_class=SensorDeviceClass.DURATION,
-            native_unit_of_measurement=UnitOfTime.SECONDS,
             entity_category=EntityCategory.DIAGNOSTIC,
             value_fn=_job_last_duration,
+            attributes_fn=_job_last_duration_attributes,
         ),
         VaultJobSensorEntityDescription(
             key="items_backed_up",
@@ -303,11 +345,20 @@ class VaultStorageSensorEntityDescription(SensorEntityDescription):
     value_fn: Callable[[StorageDestination], Any]
 
 
+_STORAGE_SENSOR_LABELS: dict[str, str] = {
+    "storage_name": "Name",
+    "storage_type": "Type",
+    "storage_health": "Health",
+    "storage_free_space": "Free space",
+    "storage_used_space": "Used space",
+    "storage_total_space": "Total space",
+}
+
+
 STORAGE_SENSOR_DESCRIPTIONS: tuple[VaultStorageSensorEntityDescription, ...] = (
     VaultStorageSensorEntityDescription(
         key="name",
         translation_key="storage_name",
-        entity_registry_enabled_default=False,
         value_fn=lambda s: s.name,
     ),
     VaultStorageSensorEntityDescription(
@@ -315,6 +366,43 @@ STORAGE_SENSOR_DESCRIPTIONS: tuple[VaultStorageSensorEntityDescription, ...] = (
         translation_key="storage_type",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=_storage_type_text,
+    ),
+    VaultStorageSensorEntityDescription(
+        key="health",
+        translation_key="storage_health",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: (s.last_health_check_status or "unknown").lower(),
+    ),
+    VaultStorageSensorEntityDescription(
+        key="free_space",
+        translation_key="storage_free_space",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
+        suggested_display_precision=1,
+        value_fn=lambda s: _storage_capacity_value(s, "free_bytes"),
+    ),
+    VaultStorageSensorEntityDescription(
+        key="used_space",
+        translation_key="storage_used_space",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
+        suggested_display_precision=1,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: _storage_capacity_value(s, "used_bytes"),
+    ),
+    VaultStorageSensorEntityDescription(
+        key="total_space",
+        translation_key="storage_total_space",
+        device_class=SensorDeviceClass.DATA_SIZE,
+        native_unit_of_measurement=UnitOfInformation.BYTES,
+        suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
+        suggested_display_precision=1,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: _storage_capacity_value(s, "total_bytes"),
     ),
 )
 
@@ -339,55 +427,73 @@ async def async_setup_entry(
 
     # Per-job sensors with dynamic detection
     job_templates = _job_sensor_descriptions()
+    job_keys = [tmpl.key for tmpl in job_templates] + ["progress"]
+
+    # One-time prune of registry entries left over from jobs/storage deleted
+    # while Home Assistant was not running, or from older integration versions
+    # with name-based unique IDs. Runs before adding entities so freed
+    # entity_ids can be reclaimed.
+    valid_uids = {f"{entry.entry_id}_{desc.key}" for desc in GLOBAL_SENSOR_DESCRIPTIONS}
+    valid_uids.update(f"{entry.entry_id}_job_{job.id}_{key}" for job in coordinator.data.jobs for key in job_keys)
+    valid_uids.update(
+        f"{entry.entry_id}_storage_{storage.id}_{tmpl.key}"
+        for storage in coordinator.data.storage
+        for tmpl in STORAGE_SENSOR_DESCRIPTIONS
+    )
+    async_prune_orphan_entities(hass, entry.entry_id, "sensor", valid_uids)
 
     @callback
     def _check_jobs() -> None:
-        current_jobs = {job.id for job in coordinator.data.jobs}
-        new_jobs = current_jobs - known_jobs
+        current = {job.id for job in coordinator.data.jobs}
+
+        # Drop entities for deleted jobs
+        removed = known_jobs - current
+        if removed:
+            known_jobs.difference_update(removed)
+            stale_uids = {f"{entry.entry_id}_job_{job_id}_{key}" for job_id in removed for key in job_keys}
+            async_remove_stale_entities(hass, "sensor", stale_uids)
+
+        new_jobs = current - known_jobs
         if new_jobs:
             known_jobs.update(new_jobs)
             entities: list[SensorEntity] = []
             for job in coordinator.data.jobs:
                 if job.id not in new_jobs:
                     continue
-                slug = _slugify_job_name(job.name)
-                for tmpl in job_templates:
-                    job_desc = VaultJobSensorEntityDescription(
-                        key=f"{slug}_{tmpl.key}",
-                        translation_key=tmpl.translation_key,
-                        device_class=tmpl.device_class,
-                        native_unit_of_measurement=tmpl.native_unit_of_measurement,
-                        suggested_display_precision=tmpl.suggested_display_precision,
-                        entity_category=tmpl.entity_category,
-                        entity_registry_enabled_default=tmpl.entity_registry_enabled_default,
-                        value_fn=tmpl.value_fn,
-                    )
-                    entities.append(VaultJobSensor(coordinator, job_desc, job))
-
+                entities.extend(
+                    VaultJobSensor(coordinator, replace(tmpl, key=f"job_{job.id}_{tmpl.key}"), job)
+                    for tmpl in job_templates
+                )
                 # Add progress sensor per job
-                entities.append(VaultJobProgressSensor(coordinator, hass, job))
-
+                entities.append(VaultJobProgressSensor(coordinator, job))
             async_add_entities(entities)
 
     @callback
     def _check_storage() -> None:
-        current_storage = {s.id for s in coordinator.data.storage}
-        new_storage = current_storage - known_storage
+        current = {storage.id for storage in coordinator.data.storage}
+
+        # Drop entities for deleted storage destinations
+        removed = known_storage - current
+        if removed:
+            known_storage.difference_update(removed)
+            stale_uids = {
+                f"{entry.entry_id}_storage_{storage_id}_{tmpl.key}"
+                for storage_id in removed
+                for tmpl in STORAGE_SENSOR_DESCRIPTIONS
+            }
+            async_remove_stale_entities(hass, "sensor", stale_uids)
+
+        new_storage = current - known_storage
         if new_storage:
             known_storage.update(new_storage)
             entities: list[SensorEntity] = []
             for storage in coordinator.data.storage:
                 if storage.id not in new_storage:
                     continue
-                slug = _slugify_job_name(storage.name)
-                for tmpl in STORAGE_SENSOR_DESCRIPTIONS:
-                    storage_desc = VaultStorageSensorEntityDescription(
-                        key=f"storage_{slug}_{tmpl.key}",
-                        translation_key=tmpl.translation_key,
-                        entity_category=tmpl.entity_category,
-                        value_fn=tmpl.value_fn,
-                    )
-                    entities.append(VaultStorageSensor(coordinator, storage_desc, storage))
+                entities.extend(
+                    VaultStorageSensor(coordinator, replace(tmpl, key=f"storage_{storage.id}_{tmpl.key}"), storage)
+                    for tmpl in STORAGE_SENSOR_DESCRIPTIONS
+                )
             async_add_entities(entities)
 
     _check_jobs()
@@ -421,7 +527,7 @@ class VaultSensor(SensorEntity, VaultEntity):
         return self.entity_description.value_fn(self.coordinator.data)
 
 
-class VaultJobSensor(SensorEntity, VaultEntity):
+class VaultJobSensor(SensorEntity, VaultJobEntity):
     """Representation of a per-job Vault sensor."""
 
     entity_description: VaultJobSensorEntityDescription
@@ -433,46 +539,62 @@ class VaultJobSensor(SensorEntity, VaultEntity):
         job: BackupJob,
     ) -> None:
         """Initialize the per-job sensor."""
-        super().__init__(coordinator, description)
-        self.entity_description = description
-        self._job_id = job.id
         label = _JOB_SENSOR_LABELS.get(description.translation_key or "", description.key)
-        self._attr_name = f"{job.name} {label}"
+        super().__init__(coordinator, description, job, label)
+        self.entity_description = description
+        if description.device_class is SensorDeviceClass.DATA_SIZE:
+            # Scale the display unit to the current value (MB/GB/TB)
+            unit = _auto_data_size_unit(description.value_fn(coordinator.data, job.id))
+            if unit is not None:
+                self._attr_suggested_unit_of_measurement = unit
 
     @property
     def native_value(self) -> Any:
         """Return the sensor value for this job."""
         return self.entity_description.value_fn(self.coordinator.data, self._job_id)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra attributes for this job sensor, if any."""
+        if self.entity_description.attributes_fn is None:
+            return None
+        return self.entity_description.attributes_fn(self.coordinator.data, self._job_id)
 
-class VaultJobProgressSensor(SensorEntity, VaultEntity):
+
+class VaultJobProgressSensor(SensorEntity, VaultJobEntity):
     """Representation of a per-job backup progress sensor (WebSocket-driven)."""
 
-    _attr_native_unit_of_measurement = "%"
+    _attr_native_unit_of_measurement = PERCENTAGE
     _attr_suggested_display_precision = 0
 
     def __init__(
         self,
         coordinator: VaultDataUpdateCoordinator,
-        hass: HomeAssistant,
         job: BackupJob,
     ) -> None:
         """Initialize the progress sensor."""
-        slug = _slugify_job_name(job.name)
         desc = SensorEntityDescription(
-            key=f"{slug}_progress",
+            key=f"job_{job.id}_progress",
             translation_key="job_progress",
         )
-        super().__init__(coordinator, desc)
-        self._job_id = job.id
-        self._hass = hass
-        self._attr_name = f"{job.name} Progress"
+        super().__init__(coordinator, desc, job, "Progress")
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to WebSocket events for live progress updates."""
+        await super().async_added_to_hass()
+        websocket = self.coordinator.config_entry.runtime_data.websocket
+        self.async_on_remove(websocket.register_listener(self._handle_ws_event))
+
+    @callback
+    def _handle_ws_event(self, event: WebSocketEvent) -> None:
+        """Write state immediately when a progress-related event arrives for this job."""
+        if event.job_id == self._job_id and event.type in ("backup_progress", "job_run_started", "job_run_completed"):
+            self.async_write_ha_state()
 
     @property
-    def native_value(self) -> int | None:
-        """Return the current progress percentage from hass.data store."""
-        progress_store: dict[int, int] = self._hass.data.get(DOMAIN, {}).get("progress", {})
-        return progress_store.get(self._job_id)
+    def native_value(self) -> int:
+        """Return the current progress percentage, or 0 when no backup is running."""
+        return self.coordinator.config_entry.runtime_data.progress.get(self._job_id, 0)
 
 
 class VaultStorageSensor(SensorEntity, VaultEntity):
@@ -490,13 +612,29 @@ class VaultStorageSensor(SensorEntity, VaultEntity):
         super().__init__(coordinator, description)
         self.entity_description = description
         self._storage_id = storage.id
-        label = "Name" if description.translation_key == "storage_name" else "Type"
-        self._attr_name = f"Storage {storage.name} {label}"
+        self._storage_name = storage.name
+        self._name_label = _STORAGE_SENSOR_LABELS.get(description.translation_key or "", description.key)
+        if description.device_class is SensorDeviceClass.DATA_SIZE:
+            # Scale the display unit to the destination size (MB/GB/TB)
+            total = storage.capacity.total_bytes if storage.capacity else None
+            unit = _auto_data_size_unit(total)
+            if unit is not None:
+                self._attr_suggested_unit_of_measurement = unit
+
+    @property
+    def name(self) -> str:
+        """Return the entity name, tracking storage renames."""
+        storage = self._current_storage()
+        if storage is not None:
+            self._storage_name = storage.name
+        return f"Storage {self._storage_name} {self._name_label}"
+
+    def _current_storage(self) -> StorageDestination | None:
+        """Return the storage destination for this sensor, if it still exists."""
+        return next((s for s in self.coordinator.data.storage if s.id == self._storage_id), None)
 
     @property
     def native_value(self) -> Any:
         """Return the sensor value for this storage destination."""
-        for storage in self.coordinator.data.storage:
-            if storage.id == self._storage_id:
-                return self.entity_description.value_fn(storage)
-        return None
+        storage = self._current_storage()
+        return self.entity_description.value_fn(storage) if storage is not None else None

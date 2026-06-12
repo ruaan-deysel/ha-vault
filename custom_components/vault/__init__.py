@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 
+from homeassistant.config_entries import ConfigEntryState
 from homeassistant.const import Platform
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
@@ -24,8 +25,11 @@ if TYPE_CHECKING:
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.EVENT,
     Platform.SENSOR,
 ]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 # Service schemas
 SERVICE_RUN_BACKUP = "run_backup"
@@ -60,27 +64,48 @@ SCHEMA_TEST_STORAGE = vol.Schema(
 )
 
 
+def _validate_entry_loaded(entry: VaultConfigEntry) -> VaultConfigEntry:
+    """Raise unless the config entry is loaded (runtime_data is only set then)."""
+    if entry.state is not ConfigEntryState.LOADED:
+        raise ServiceValidationError(
+            f"Vault config entry '{entry.title}' is not loaded",
+            translation_domain=DOMAIN,
+            translation_key="entry_not_loaded",
+            translation_placeholders={"title": entry.title},
+        )
+    return entry
+
+
 def _get_entry_from_call(hass: HomeAssistant, call: ServiceCall) -> VaultConfigEntry:
     """Resolve target config entry from service call context."""
     entries = hass.config_entries.async_entries(DOMAIN)
     if not entries:
-        msg = "No Vault config entries found"
-        raise ServiceValidationError(msg)
+        raise ServiceValidationError(
+            "No Vault config entries found",
+            translation_domain=DOMAIN,
+            translation_key="no_config_entries",
+        )
 
     requested_entry_id: str | None = call.data.get("config_entry_id")
     if requested_entry_id:
         for entry in entries:
             if entry.entry_id == requested_entry_id:
-                return entry  # type: ignore[return-value]
-        msg = f"No Vault config entry found for config_entry_id '{requested_entry_id}'"
-        raise ServiceValidationError(msg)
+                return _validate_entry_loaded(entry)  # type: ignore[arg-type]
+        raise ServiceValidationError(
+            f"No Vault config entry found for config_entry_id '{requested_entry_id}'",
+            translation_domain=DOMAIN,
+            translation_key="entry_not_found",
+            translation_placeholders={"entry_id": requested_entry_id},
+        )
 
     if len(entries) > 1:
-        msg = "Multiple Vault config entries found; provide config_entry_id"
-        raise ServiceValidationError(msg)
+        raise ServiceValidationError(
+            "Multiple Vault config entries found; provide config_entry_id",
+            translation_domain=DOMAIN,
+            translation_key="multiple_config_entries",
+        )
 
-    entry: VaultConfigEntry = entries[0]  # type: ignore[assignment]
-    return entry
+    return _validate_entry_loaded(entries[0])  # type: ignore[arg-type]
 
 
 def _get_client_from_entry(hass: HomeAssistant, call: ServiceCall) -> VaultApiClient:
@@ -94,7 +119,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
 
     async def _handle_run_backup(call: ServiceCall) -> None:
         """Handle vault.run_backup service call."""
-        client = _get_client_from_entry(hass, call)
+        entry = _get_entry_from_call(hass, call)
+        client = entry.runtime_data.client
         job_id: int | None = call.data.get("job_id")
         job_name: str | None = call.data.get("job_name")
 
@@ -105,7 +131,6 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
             )
 
         # Resolve job_name → job_id
-        entry = _get_entry_from_call(hass, call)
         jobs = entry.runtime_data.coordinator.data.jobs
 
         if job_name is not None and job_id is None:
@@ -203,35 +228,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: VaultConfigEntry) -> boo
     coordinator = VaultDataUpdateCoordinator(hass, client)
 
     await coordinator.async_config_entry_first_refresh()
-    await websocket.async_connect()
 
-    # Initialize progress tracking store
-    hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN].setdefault("progress", {})
+    data = VaultData(
+        client=client,
+        coordinator=coordinator,
+        websocket=websocket,
+    )
+    entry.runtime_data = data
 
     # Fire HA events from WebSocket messages and track progress
     def _on_ws_event(event: WebSocketEvent) -> None:
         ha_event = VaultWebSocketClient.get_ha_event_type(event.type)
         if ha_event:
-            hass.bus.async_fire(ha_event, event.model_dump(exclude_none=True))
+            hass.bus.async_fire(ha_event, {"entry_id": entry.entry_id, **event.model_dump(exclude_none=True)})
 
         # Track backup progress from WebSocket events
         job_id = event.job_id
         if job_id is not None:
             if event.type == "backup_progress":
-                hass.data[DOMAIN]["progress"][job_id] = event.percent or 0
+                data.progress[job_id] = event.percent or 0
             elif event.type == "job_run_completed":
-                hass.data[DOMAIN]["progress"].pop(job_id, None)
+                data.progress.pop(job_id, None)
             elif event.type == "job_run_started":
-                hass.data[DOMAIN]["progress"][job_id] = 0
+                data.progress[job_id] = 0
 
+    # Register the listener before connecting so no early events are dropped
     websocket.register_listener(_on_ws_event)
-
-    entry.runtime_data = VaultData(
-        client=client,
-        coordinator=coordinator,
-        websocket=websocket,
-    )
+    await websocket.async_connect()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
@@ -241,8 +264,4 @@ async def async_unload_entry(hass: HomeAssistant, entry: VaultConfigEntry) -> bo
     """Unload a Vault config entry."""
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.websocket.async_disconnect()
-        # Clean up progress tracking if no more loaded entries
-        remaining = [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]
-        if not remaining:
-            hass.data.pop(DOMAIN, None)
     return unload_ok

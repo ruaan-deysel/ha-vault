@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.vault.api.exceptions import VaultAuthenticationError, VaultConnectionError
@@ -12,6 +14,13 @@ from custom_components.vault.const import DOMAIN
 from homeassistant.config_entries import SOURCE_USER
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
+
+
+@pytest.fixture(autouse=True)
+def mock_setup() -> Generator[AsyncMock]:
+    """Prevent the real entry setup from running after a flow creates an entry."""
+    with patch("custom_components.vault.async_setup_entry", return_value=True) as setup_mock:
+        yield setup_mock
 
 
 def _make_mock_client(

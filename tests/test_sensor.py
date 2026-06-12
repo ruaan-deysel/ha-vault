@@ -14,7 +14,6 @@ from custom_components.vault.api.models import (
     StorageType,
     VaultApiData,
 )
-from custom_components.vault.const import DOMAIN
 from custom_components.vault.sensor import _job_last_failure_reason, _job_last_size, _job_restore_points
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -33,9 +32,9 @@ async def test_global_sensors_created(
     # encryption_status, runner_queue_length, runner_current_job_id (8)
     # Per-job: 3 jobs x 8 sensors = 24
     # Per-job progress: 3 jobs x 1 = 3
-    # Per-storage: 2 storage x 2 sensors = 4
-    # Total: 39
-    assert len(sensor_entries) == 39
+    # Per-storage: 2 storage x 6 sensors = 12
+    # Total: 47
+    assert len(sensor_entries) == 47
 
 
 async def test_vault_status_sensor(
@@ -96,7 +95,7 @@ async def test_per_job_sensors_created(
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
 
     daily_status = next(
-        (e for e in entries if "daily_backup_status" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_1_status"),
         None,
     )
     assert daily_status is not None
@@ -111,7 +110,7 @@ async def test_job_status_sensor_state(
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
 
     daily_status = next(
-        (e for e in entries if "daily_backup_status" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_1_status"),
         None,
     )
     assert daily_status is not None
@@ -187,18 +186,18 @@ async def test_progress_sensor_value(
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
 
     progress_entry = next(
-        (e for e in entries if "daily_backup_progress" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_1_progress"),
         None,
     )
     assert progress_entry is not None
 
-    # Initially no progress in store — should be unknown/None
+    # Initially no progress in store — idle jobs report 0
     state = hass.states.get(progress_entry.entity_id)
     assert state is not None
-    assert state.state == "unknown"
+    assert state.state == "0"
 
-    # Set progress in hass.data
-    hass.data[DOMAIN]["progress"][1] = 42
+    # Set progress in the runtime data store
+    mock_setup_entry.runtime_data.progress[1] = 42
     # Trigger state write by refreshing coordinator
     coordinator = mock_setup_entry.runtime_data.coordinator
     await coordinator.async_refresh()
@@ -218,8 +217,8 @@ async def test_storage_sensors_created(
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
 
     storage_entries = [e for e in entries if "storage_" in e.unique_id]
-    # 2 storage destinations x 2 sensors each = 4
-    assert len(storage_entries) == 4
+    # 2 storage destinations x 6 sensors each = 12
+    assert len(storage_entries) == 12
 
 
 async def test_storage_sensor_name_value(
@@ -231,7 +230,7 @@ async def test_storage_sensor_name_value(
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
 
     name_entry = next(
-        (e for e in entries if "local_backup_name" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_storage_1_name"),
         None,
     )
     assert name_entry is not None
@@ -249,7 +248,7 @@ async def test_storage_sensor_type_value(
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
 
     type_entry = next(
-        (e for e in entries if "s3_bucket_type" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_storage_2_type"),
         None,
     )
     assert type_entry is not None
@@ -258,16 +257,16 @@ async def test_storage_sensor_type_value(
     assert state.state == "s3"
 
 
-async def test_storage_sensor_returns_none_when_removed(
+async def test_storage_sensor_removed_when_storage_removed(
     hass: HomeAssistant,
     mock_setup_entry: MockConfigEntry,
 ) -> None:
-    """Test storage sensor returns None when storage destination is removed."""
+    """Test storage sensor entities are removed when the storage destination disappears."""
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
 
     name_entry = next(
-        (e for e in entries if "local_backup_name" in e.unique_id),
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_storage_1_name"),
         None,
     )
     assert name_entry is not None
@@ -287,9 +286,9 @@ async def test_storage_sensor_returns_none_when_removed(
     coordinator.async_set_updated_data(coordinator.data)
     await hass.async_block_till_done()
 
-    state = hass.states.get(name_entry.entity_id)
-    assert state is not None
-    assert state.state == "unknown"
+    # Stale entity cleanup removes the registry entry and its state
+    assert registry.async_get(name_entry.entity_id) is None
+    assert hass.states.get(name_entry.entity_id) is None
 
 
 async def test_dynamic_storage_detection(
@@ -299,10 +298,10 @@ async def test_dynamic_storage_detection(
     """Test that new storage destinations detected on coordinator update get sensors."""
     registry = er.async_get(hass)
 
-    # Initially 2 storage * 2 sensors = 4 storage sensors
+    # Initially 2 storage * 6 sensors = 12 storage sensors
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
     storage_entries = [e for e in entries if "storage_" in e.unique_id]
-    assert len(storage_entries) == 4
+    assert len(storage_entries) == 12
 
     # Add a third storage destination to coordinator data
     coordinator = mock_setup_entry.runtime_data.coordinator
@@ -323,8 +322,8 @@ async def test_dynamic_storage_detection(
 
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
     storage_entries = [e for e in entries if "storage_" in e.unique_id]
-    # 3 storage * 2 sensors = 6
-    assert len(storage_entries) == 6
+    # 3 storage * 6 sensors = 18
+    assert len(storage_entries) == 18
 
 
 async def test_job_last_failure_reason_from_dict(mock_vault_data: VaultApiData) -> None:
@@ -378,7 +377,7 @@ async def test_storage_type_string_passthrough(
 
     registry = er.async_get(hass)
     entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
-    type_entry = next((e for e in entries if "storage_custom_type" in e.unique_id), None)
+    type_entry = next((e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_storage_77_type"), None)
     assert type_entry is not None
 
     state = hass.states.get(type_entry.entity_id)
@@ -386,16 +385,16 @@ async def test_storage_type_string_passthrough(
     assert state.state == "rclone"
 
 
-async def test_job_last_failure_reason_no_run_returns_none(mock_vault_data: VaultApiData) -> None:
+async def test_job_last_failure_reason_no_run(mock_vault_data: VaultApiData) -> None:
     """Test no-run branch for last failure reason helper."""
-    assert _job_last_failure_reason(mock_vault_data, 9999) is None
+    assert _job_last_failure_reason(mock_vault_data, 9999) == "No failures"
 
 
-async def test_job_last_failure_reason_completed_returns_none(mock_vault_data: VaultApiData) -> None:
-    """Test completed/running status branch returns no failure reason."""
+async def test_job_last_failure_reason_completed(mock_vault_data: VaultApiData) -> None:
+    """Test completed/running status branch reports no failures."""
     completed_run = JobRun(id=600, job_id=12, status=JobRunStatus.COMPLETED, log="{}")
     data = mock_vault_data.model_copy(update={"job_runs": {12: [completed_run]}})
-    assert _job_last_failure_reason(data, 12) is None
+    assert _job_last_failure_reason(data, 12) == "No failures"
 
 
 async def test_job_last_failure_reason_fallback_status_text(mock_vault_data: VaultApiData) -> None:

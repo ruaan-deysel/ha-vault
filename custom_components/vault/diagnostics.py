@@ -9,7 +9,18 @@ from homeassistant.core import HomeAssistant
 
 from .coordinator import VaultConfigEntry
 
-TO_REDACT = {"host", "api_key"}
+TO_REDACT = {
+    "host",
+    "api_key",
+    "passphrase",
+    "encryption_passphrase",
+    "password",
+    "token",
+    "secret",
+    "webhook",
+    "webhook_url",
+    "discord_webhook_url",
+}
 
 
 async def async_get_config_entry_diagnostics(
@@ -20,10 +31,8 @@ async def async_get_config_entry_diagnostics(
     coordinator = entry.runtime_data.coordinator
     data = coordinator.data
 
-    redacted_data = async_redact_data(dict(entry.data), TO_REDACT)
-
-    return {
-        "config_entry": redacted_data,
+    diagnostics = {
+        "config_entry": dict(entry.data),
         "coordinator_data": {
             "health": data.health.model_dump(),
             "settings": data.settings.model_dump(),
@@ -44,3 +53,6 @@ async def async_get_config_entry_diagnostics(
             "activity_count": len(data.activity),
         },
     }
+    # Redact the whole payload — Settings allows arbitrary extra keys that may
+    # contain secrets (webhook URLs, passphrases) depending on plugin version.
+    return async_redact_data(diagnostics, TO_REDACT)

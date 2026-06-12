@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import VaultApiClient, VaultApiError, VaultAuthenticationError, VaultConnectionError, VaultWebSocketClient
-from .api.models import VaultApiData
-from .const import ACTIVE_UPDATE_INTERVAL_SECONDS, DEFAULT_UPDATE_INTERVAL_SECONDS, LOGGER
+from .api.models import StorageDestination, VaultApiData
+from .const import ACTIVE_UPDATE_INTERVAL_SECONDS, DEFAULT_UPDATE_INTERVAL_SECONDS, DOMAIN, LOGGER
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -29,6 +30,8 @@ class VaultData:
     client: VaultApiClient
     coordinator: VaultDataUpdateCoordinator
     websocket: VaultWebSocketClient
+    progress: dict[int, int] = field(default_factory=dict)
+    """Live backup progress per job id, fed by WebSocket events."""
 
 
 class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
@@ -50,6 +53,7 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
             update_interval=timedelta(seconds=DEFAULT_UPDATE_INTERVAL_SECONDS),
         )
         self.client = client
+        self._storage_issue_ids: set[str] = set()
 
     @staticmethod
     def _job_run_status_text(status: object) -> str:
@@ -62,11 +66,40 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
             try:
                 runs = await self.client.async_get_job_history(job_id, limit=1)
                 restore_points = await self.client.async_get_restore_points(job_id)
+            except VaultAuthenticationError:
+                # Must propagate so the reauth flow is triggered.
+                raise
             except VaultApiError as err:
                 LOGGER.warning("Failed fetching per-job data for job_id=%s: %s", job_id, err)
                 return job_id, [], 0
 
         return job_id, runs, len(restore_points)
+
+    def _update_storage_repair_issues(self, storage: list[StorageDestination]) -> None:
+        """Create or clear repair issues for unhealthy storage destinations."""
+        current_issue_ids: set[str] = set()
+        for dest in storage:
+            issue_id = f"storage_unhealthy_{dest.id}"
+            status = (dest.last_health_check_status or "").lower()
+            unhealthy = (status and status != "ok") or dest.breaker_state == "open"
+            if unhealthy:
+                current_issue_ids.add(issue_id)
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    issue_id,
+                    is_fixable=False,
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="storage_unhealthy",
+                    translation_placeholders={
+                        "name": dest.name,
+                        "error": dest.last_health_check_error or dest.breaker_state or status or "unknown",
+                    },
+                )
+        stale_issue_ids = self._storage_issue_ids - current_issue_ids
+        for issue_id in stale_issue_ids:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+        self._storage_issue_ids = current_issue_ids
 
     async def _async_update_data(self) -> VaultApiData:
         """Fetch data from all Vault API endpoints.
@@ -110,6 +143,8 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
             restore_point_counts=restore_point_counts,
             activity=activity,
         )
+
+        self._update_storage_repair_issues(storage)
 
         # Adjust polling rate: faster when a job is running
         has_running = any(runs and self._job_run_status_text(runs[0].status) == "running" for runs in job_runs.values())

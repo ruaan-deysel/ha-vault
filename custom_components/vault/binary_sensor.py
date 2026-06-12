@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
-import re
+from dataclasses import dataclass, replace
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -17,14 +16,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .api.models import BackupJob, VaultApiData
 from .coordinator import VaultConfigEntry, VaultDataUpdateCoordinator
-from .entity import VaultEntity
+from .entity import VaultEntity, VaultJobEntity, async_prune_orphan_entities, async_remove_stale_entities
 
-PARALLEL_UPDATES = 1
-
-
-def _slugify_job_name(name: str) -> str:
-    """Convert a job name to a slug suitable for entity IDs."""
-    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+PARALLEL_UPDATES = 0
 
 
 # ---------------------------------------------------------------------------
@@ -120,29 +114,48 @@ async def async_setup_entry(
     coordinator = entry.runtime_data.coordinator
     known_jobs: set[int] = set()
 
+    # One-time prune of registry entries left over from jobs deleted while
+    # Home Assistant was not running, or from older integration versions with
+    # name-based unique IDs. Runs before adding entities so freed entity_ids
+    # can be reclaimed.
+    valid_uids = {f"{entry.entry_id}_{desc.key}" for desc in GLOBAL_BINARY_SENSOR_DESCRIPTIONS}
+    valid_uids.update(
+        f"{entry.entry_id}_job_{job.id}_{tmpl.key}"
+        for job in coordinator.data.jobs
+        for tmpl in PER_JOB_BINARY_SENSOR_TEMPLATES
+    )
+    async_prune_orphan_entities(hass, entry.entry_id, "binary_sensor", valid_uids)
+
     # Add global binary sensors once
     async_add_entities([VaultBinarySensor(coordinator, desc) for desc in GLOBAL_BINARY_SENSOR_DESCRIPTIONS])
 
     # Per-job binary sensors with dynamic detection
     @callback
     def _check_jobs() -> None:
-        current_jobs = {job.id for job in coordinator.data.jobs}
-        new_jobs = current_jobs - known_jobs
+        current = {job.id for job in coordinator.data.jobs}
+
+        # Drop entities for deleted jobs
+        removed = known_jobs - current
+        if removed:
+            known_jobs.difference_update(removed)
+            stale_uids = {
+                f"{entry.entry_id}_job_{job_id}_{tmpl.key}"
+                for job_id in removed
+                for tmpl in PER_JOB_BINARY_SENSOR_TEMPLATES
+            }
+            async_remove_stale_entities(hass, "binary_sensor", stale_uids)
+
+        new_jobs = current - known_jobs
         if new_jobs:
             known_jobs.update(new_jobs)
             entities: list[BinarySensorEntity] = []
             for job in coordinator.data.jobs:
                 if job.id not in new_jobs:
                     continue
-                slug = _slugify_job_name(job.name)
-                for tmpl in PER_JOB_BINARY_SENSOR_TEMPLATES:
-                    desc = VaultJobBinarySensorEntityDescription(
-                        key=f"{slug}_{tmpl.key}",
-                        translation_key=tmpl.translation_key,
-                        device_class=tmpl.device_class,
-                        is_on_fn=tmpl.is_on_fn,
-                    )
-                    entities.append(VaultJobBinarySensor(coordinator, desc, job))
+                entities.extend(
+                    VaultJobBinarySensor(coordinator, replace(tmpl, key=f"job_{job.id}_{tmpl.key}"), job)
+                    for tmpl in PER_JOB_BINARY_SENSOR_TEMPLATES
+                )
             async_add_entities(entities)
 
     _check_jobs()
@@ -174,7 +187,7 @@ class VaultBinarySensor(BinarySensorEntity, VaultEntity):
         return self.entity_description.is_on_fn(self.coordinator.data)
 
 
-class VaultJobBinarySensor(BinarySensorEntity, VaultEntity):
+class VaultJobBinarySensor(BinarySensorEntity, VaultJobEntity):
     """Representation of a per-job Vault binary sensor."""
 
     entity_description: VaultJobBinarySensorEntityDescription
@@ -186,11 +199,9 @@ class VaultJobBinarySensor(BinarySensorEntity, VaultEntity):
         job: BackupJob,
     ) -> None:
         """Initialize the per-job binary sensor."""
-        super().__init__(coordinator, description)
-        self.entity_description = description
-        self._job_id = job.id
         label = _JOB_BINARY_SENSOR_LABELS.get(description.translation_key or "", description.key)
-        self._attr_name = f"{job.name} {label}"
+        super().__init__(coordinator, description, job, label)
+        self.entity_description = description
 
     @property
     def is_on(self) -> bool:

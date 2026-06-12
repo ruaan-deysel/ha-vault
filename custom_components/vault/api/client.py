@@ -192,9 +192,12 @@ class VaultApiClient:
     async def async_get_storage(self) -> list[StorageDestination]:
         """GET /api/v1/storage — list storage destinations."""
         data = await self._request("GET", f"{API_BASE}/storage")
-        if isinstance(data, list):
-            return [StorageDestination.model_validate(item) for item in data]
-        return []
+        if not isinstance(data, list):
+            # Entities are pruned for storage missing from this list — never
+            # silently treat a malformed payload as "no storage".
+            msg = f"Unexpected response for storage list: {type(data).__name__}"
+            raise VaultApiError(msg)
+        return [StorageDestination.model_validate(item) for item in data]
 
     async def async_test_storage(self, storage_id: int) -> StorageTestResult:
         """POST /api/v1/storage/{id}/test — test storage connection."""
@@ -294,9 +297,12 @@ class VaultApiClient:
     async def async_get_jobs(self) -> list[BackupJob]:
         """GET /api/v1/jobs — list all backup jobs."""
         data = await self._request("GET", f"{API_BASE}/jobs")
-        if isinstance(data, list):
-            return [BackupJob.model_validate(item) for item in data]
-        return []
+        if not isinstance(data, list):
+            # Entities are pruned for jobs missing from this list — never
+            # silently treat a malformed payload as "no jobs".
+            msg = f"Unexpected response for jobs list: {type(data).__name__}"
+            raise VaultApiError(msg)
+        return [BackupJob.model_validate(item) for item in data]
 
     async def async_get_job(self, job_id: int) -> JobDetail:
         """GET /api/v1/jobs/{id} — get job details with items."""
@@ -626,36 +632,38 @@ class VaultApiClient:
             headers["Authorization"] = f"Bearer {self._api_key}"
 
         try:
-            async with asyncio.timeout(10):
+            # The timeout must cover the body read too — a stalled response
+            # body would otherwise hang the coordinator indefinitely.
+            async with asyncio.timeout(30):
                 response = await self._session.request(
                     method,
                     url,
                     json=json_data,
                     headers=headers or None,
                 )
+
+                if response.status in (401, 403):
+                    msg = f"Authentication failed ({response.status})"
+                    raise VaultAuthenticationError(msg)
+
+                if response.status >= 400:
+                    msg = f"Vault API error ({response.status}): {await response.text()}"
+                    raise VaultApiError(msg)
+
+                if not expect_json and expect_bytes:
+                    return await response.read()
+
+                if not expect_json:
+                    return await response.text()
+
+                try:
+                    return await response.json()
+                except (aiohttp.ContentTypeError, ValueError) as err:
+                    msg = f"Invalid JSON response from Vault: {err}"
+                    raise VaultApiError(msg) from err
         except TimeoutError as err:
             msg = f"Timeout connecting to Vault at {self._base_url}"
             raise VaultConnectionError(msg) from err
         except aiohttp.ClientError as err:
             msg = f"Error connecting to Vault at {self._base_url}: {err}"
             raise VaultConnectionError(msg) from err
-
-        if response.status in (401, 403):
-            msg = f"Authentication failed ({response.status})"
-            raise VaultAuthenticationError(msg)
-
-        if response.status >= 400:
-            msg = f"Vault API error ({response.status}): {await response.text()}"
-            raise VaultApiError(msg)
-
-        if not expect_json and expect_bytes:
-            return await response.read()
-
-        if not expect_json:
-            return await response.text()
-
-        try:
-            return await response.json()
-        except (aiohttp.ContentTypeError, ValueError) as err:
-            msg = f"Invalid JSON response from Vault: {err}"
-            raise VaultApiError(msg) from err

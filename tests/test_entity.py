@@ -21,7 +21,8 @@ async def test_device_info(
     assert device.manufacturer == "Vault"
     assert device.model == "Unraid Backup Daemon"
     assert device.sw_version == "1.0.0"
-    assert device.configuration_url == "http://192.168.1.100:24085"
+    # Links to the Unraid web UI (no API port) since Vault is an Unraid plugin
+    assert device.configuration_url == "http://192.168.1.100"
 
 
 async def test_unique_id_format(

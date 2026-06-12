@@ -74,6 +74,16 @@ class EncryptionStatus(BaseModel):
 # --- Storage ---
 
 
+class StorageCapacity(BaseModel):
+    """Capacity metrics embedded in a storage destination."""
+
+    free_bytes: int | None = None
+    total_bytes: int | None = None
+    used_bytes: int | None = None
+    error: str = ""
+    probed_at: datetime | None = None
+
+
 class StorageDestination(BaseModel):
     """A single storage destination from GET /api/v1/storage."""
 
@@ -81,6 +91,12 @@ class StorageDestination(BaseModel):
     name: str
     type: StorageType | str = StorageType.LOCAL
     config: str = ""
+    capacity: StorageCapacity | None = None
+    last_health_check_status: str = ""
+    last_health_check_error: str = ""
+    last_health_check_at: datetime | None = None
+    breaker_state: str = ""
+    dedup_enabled: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

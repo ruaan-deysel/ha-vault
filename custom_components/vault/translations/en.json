@@ -86,7 +86,7 @@
         "name": "Runner queue length"
       },
       "runner_current_job_id": {
-        "name": "Runner current job ID"
+        "name": "Runner active job"
       },
       "job_status": {
         "name": "Status"
@@ -120,6 +120,18 @@
       },
       "storage_type": {
         "name": "Storage type"
+      },
+      "storage_health": {
+        "name": "Storage health"
+      },
+      "storage_free_space": {
+        "name": "Storage free space"
+      },
+      "storage_used_space": {
+        "name": "Storage used space"
+      },
+      "storage_total_space": {
+        "name": "Storage total space"
       }
     },
     "binary_sensor": {
@@ -136,6 +148,20 @@
     "button": {
       "run_backup": {
         "name": "Run backup"
+      }
+    },
+    "event": {
+      "job_last_event": {
+        "name": "Last event",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "backup_started": "Backup started",
+              "backup_completed": "Backup completed",
+              "backup_failed": "Backup failed"
+            }
+          }
+        }
       }
     }
   },
@@ -222,6 +248,24 @@
     },
     "restore_failed": {
       "message": "Failed to initiate restore operation."
+    },
+    "no_config_entries": {
+      "message": "No Vault config entries found."
+    },
+    "entry_not_found": {
+      "message": "No Vault config entry found for config_entry_id {entry_id}."
+    },
+    "multiple_config_entries": {
+      "message": "Multiple Vault config entries found; provide config_entry_id."
+    },
+    "entry_not_loaded": {
+      "message": "Vault config entry {title} is not loaded."
+    }
+  },
+  "issues": {
+    "storage_unhealthy": {
+      "title": "Vault storage destination unhealthy",
+      "description": "The Vault storage destination {name} is reporting an unhealthy state: {error}. Backups targeting this destination may fail. Check the storage configuration and connectivity in the Vault UI."
     }
   }
 }

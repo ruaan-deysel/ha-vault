@@ -37,6 +37,18 @@
       "job_last_run": {
         "default": "mdi:clock-outline"
       },
+      "job_last_duration": {
+        "default": "mdi:timer-outline"
+      },
+      "runner_queue_length": {
+        "default": "mdi:tray-full"
+      },
+      "runner_current_job_id": {
+        "default": "mdi:play-circle-outline"
+      },
+      "vault_mode": {
+        "default": "mdi:cog-outline"
+      },
       "job_last_size": {
         "default": "mdi:database"
       },
@@ -57,6 +69,22 @@
       },
       "storage_type": {
         "default": "mdi:folder-network"
+      },
+      "storage_health": {
+        "default": "mdi:heart-pulse",
+        "state": {
+          "ok": "mdi:check-circle",
+          "error": "mdi:alert-circle"
+        }
+      },
+      "storage_free_space": {
+        "default": "mdi:harddisk"
+      },
+      "storage_used_space": {
+        "default": "mdi:database"
+      },
+      "storage_total_space": {
+        "default": "mdi:harddisk-plus"
       }
     },
     "binary_sensor": {
@@ -73,6 +101,11 @@
     "button": {
       "run_backup": {
         "default": "mdi:play-circle"
+      }
+    },
+    "event": {
+      "job_last_event": {
+        "default": "mdi:backup-restore"
       }
     }
   },
