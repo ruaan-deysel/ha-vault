@@ -57,40 +57,103 @@ jobs:
 
       - name: Extract latest changelog section
         id: changelog
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
         run: |
+          FOOTER="See [CHANGELOG.md](https://github.com/${REPOSITORY}/blob/${TAG}/CHANGELOG.md) for the full changelog."
+
+          emit_notes() {
+            echo "----- release notes -----"
+            cat "$1"
+            echo "-------------------------"
+            {
+              echo "notes<<NOTES_EOF"
+              cat "$1"
+              echo "NOTES_EOF"
+            } >> "$GITHUB_OUTPUT"
+          }
+
+          fallback_notes() {
+            {
+              echo "Release ${TAG}"
+              echo
+              echo "---"
+              echo
+              echo "$FOOTER"
+            } > /tmp/release_notes.md
+            emit_notes /tmp/release_notes.md
+          }
+
           if [[ ! -f CHANGELOG.md ]]; then
-            echo "notes=Release ${{ steps.version.outputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "notes=Release ${TAG}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          awk '
-            /^## [0-9]{4}\.[0-9]{2}\.[0-9]{2}$/ {
-              if (found) {
-                exit
-              }
-              found=1
-            }
-            found {
-              print
-            }
-          ' CHANGELOG.md > /tmp/release_notes.txt
+          # Normalize a dotted version by stripping leading zeros from each
+          # segment, so the manifest version (2026.6.1) matches zero-padded
+          # changelog headings ([2026.06.01]).
+          norm() {
+            awk -F. -v OFS=. '{ for (i = 1; i <= NF; i++) $i += 0; print }' <<< "$1"
+          }
 
-          if [[ ! -s /tmp/release_notes.txt ]]; then
-            {
-              echo "notes<<EOF"
-              echo "Release ${{ steps.version.outputs.tag }}"
-              echo
-              echo "See CHANGELOG.md for details."
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
+          target="$(norm "$VERSION")"
+
+          # Locate the changelog section for this release: headings look like
+          # "## [2026.06.01] - 2026-06-13". Prefer the section matching the
+          # manifest version; fall back to the first versioned section.
+          start="" end="" first_start="" first_end=""
+          while IFS=: read -r lineno text; do
+            if [[ -n "$start" && -z "$end" && "$lineno" -gt "$start" ]]; then
+              end="$lineno"
+            fi
+            if [[ -n "$first_start" && -z "$first_end" && "$lineno" -gt "$first_start" ]]; then
+              first_end="$lineno"
+            fi
+            ver="$(sed -n 's/^## \[\([0-9][0-9.]*\)\].*/\1/p' <<< "$text")"
+            [[ -z "$ver" ]] && continue
+            [[ -z "$first_start" ]] && first_start="$lineno"
+            if [[ -z "$start" && "$(norm "$ver")" == "$target" ]]; then
+              start="$lineno"
+            fi
+          done < <(grep -n '^## \[' CHANGELOG.md)
+
+          if [[ -z "$start" ]]; then
+            echo "No changelog section found for version ${VERSION}; falling back to the first versioned section."
+            start="$first_start"
+            end="$first_end"
+          fi
+
+          if [[ -z "$start" ]]; then
+            echo "No versioned changelog section found at all."
+            fallback_notes
+            exit 0
+          fi
+
+          if [[ -n "$end" ]]; then
+            sed -n "$((start + 1)),$((end - 1))p" CHANGELOG.md > /tmp/section.md
+          else
+            sed -n "$((start + 1)),\$p" CHANGELOG.md > /tmp/section.md
+          fi
+
+          # Trim leading and trailing blank lines
+          awk 'NF { seen = 1 } seen' /tmp/section.md | tac | awk 'NF { seen = 1 } seen' | tac > /tmp/release_notes.md
+
+          if [[ ! -s /tmp/release_notes.md ]]; then
+            echo "Matched changelog section is empty."
+            fallback_notes
             exit 0
           fi
 
           {
-            echo "notes<<EOF"
-            cat /tmp/release_notes.txt
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+            echo
+            echo "---"
+            echo
+            echo "$FOOTER"
+          } >> /tmp/release_notes.md
+
+          emit_notes /tmp/release_notes.md
 
       - name: Create GitHub release
         if: steps.tag.outputs.exists == 'false'
