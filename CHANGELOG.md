@@ -6,6 +6,10 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ## [Unreleased]
 
+## [2026.06.02] - 2026-06-13
+
+- Branding updates
+
 ## [2026.06.01] - 2026-06-13
 
 ### Added
