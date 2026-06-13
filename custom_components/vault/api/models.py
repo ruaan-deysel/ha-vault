@@ -5,7 +5,27 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
+from pydantic_core import PydanticUndefined
+
+
+class VaultModel(BaseModel):
+    """Base model that treats explicit nulls as missing values.
+
+    The Vault API sends explicit ``null`` for fields that have no value yet
+    (e.g. ``duration_seconds`` while a run is still in progress). Pydantic
+    only applies defaults for *missing* keys, so nulls would otherwise fail
+    validation and take down the whole coordinator update.
+    """
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def _null_uses_default(cls, value: object, info: ValidationInfo) -> object:
+        if value is None and info.field_name is not None:
+            field = cls.model_fields[info.field_name]
+            if field.default is not PydanticUndefined or field.default_factory is not None:
+                return field.get_default(call_default_factory=True)
+        return value
 
 
 class JobRunStatus(StrEnum):
@@ -39,7 +59,7 @@ class ActivityLevel(StrEnum):
 # --- Auth ---
 
 
-class AuthStatus(BaseModel):
+class AuthStatus(VaultModel):
     """Response from GET /api/v1/auth/status."""
 
     auth_required: bool = False
@@ -48,7 +68,7 @@ class AuthStatus(BaseModel):
 # --- Health ---
 
 
-class HealthStatus(BaseModel):
+class HealthStatus(VaultModel):
     """Response from GET /api/v1/health."""
 
     status: str
@@ -59,13 +79,13 @@ class HealthStatus(BaseModel):
 # --- Settings ---
 
 
-class Settings(BaseModel):
+class Settings(VaultModel):
     """Response from GET /api/v1/settings."""
 
     model_config = {"extra": "allow"}
 
 
-class EncryptionStatus(BaseModel):
+class EncryptionStatus(VaultModel):
     """Response from GET /api/v1/settings/encryption."""
 
     encryption_enabled: bool = False
@@ -74,7 +94,7 @@ class EncryptionStatus(BaseModel):
 # --- Storage ---
 
 
-class StorageCapacity(BaseModel):
+class StorageCapacity(VaultModel):
     """Capacity metrics embedded in a storage destination."""
 
     free_bytes: int | None = None
@@ -84,7 +104,7 @@ class StorageCapacity(BaseModel):
     probed_at: datetime | None = None
 
 
-class StorageDestination(BaseModel):
+class StorageDestination(VaultModel):
     """A single storage destination from GET /api/v1/storage."""
 
     id: int
@@ -113,7 +133,7 @@ class StorageDestination(BaseModel):
         return value
 
 
-class StorageTestResult(BaseModel):
+class StorageTestResult(VaultModel):
     """Response from POST /api/v1/storage/{id}/test."""
 
     success: bool
@@ -123,7 +143,7 @@ class StorageTestResult(BaseModel):
 # --- Jobs ---
 
 
-class BackupJob(BaseModel):
+class BackupJob(VaultModel):
     """A single backup job from GET /api/v1/jobs."""
 
     id: int
@@ -149,7 +169,7 @@ class BackupJob(BaseModel):
     updated_at: datetime | None = None
 
 
-class JobItem(BaseModel):
+class JobItem(VaultModel):
     """An item within a job from GET /api/v1/jobs/{id}."""
 
     id: int
@@ -161,14 +181,14 @@ class JobItem(BaseModel):
     sort_order: int = 0
 
 
-class JobDetail(BaseModel):
+class JobDetail(VaultModel):
     """Response from GET /api/v1/jobs/{id}."""
 
     job: BackupJob
     items: list[JobItem] = Field(default_factory=list)
 
 
-class JobRun(BaseModel):
+class JobRun(VaultModel):
     """A single job run from GET /api/v1/jobs/{id}/history."""
 
     id: int
@@ -198,7 +218,7 @@ class JobRun(BaseModel):
         return value
 
 
-class RestorePoint(BaseModel):
+class RestorePoint(VaultModel):
     """A single restore point from GET /api/v1/jobs/{id}/restore-points."""
 
     id: int
@@ -218,7 +238,7 @@ class RestorePoint(BaseModel):
 # --- Activity ---
 
 
-class ActivityEntry(BaseModel):
+class ActivityEntry(VaultModel):
     """A single activity log entry from GET /api/v1/activity."""
 
     id: int
@@ -237,10 +257,31 @@ class ActivityEntry(BaseModel):
         return value
 
 
+# --- Anomalies ---
+
+
+class Anomaly(VaultModel):
+    """A single anomaly record from GET /api/v1/anomalies."""
+
+    id: int
+    fingerprint: str = ""
+    detector: str = ""
+    severity: str = ""
+    scope_kind: str = ""
+    scope_id: int = 0
+    metric: str = ""
+    summary: str = ""
+    details: str = ""
+    state: str = ""
+    job_run_id: int = 0
+    first_seen_at: datetime | None = None
+    last_seen_at: datetime | None = None
+
+
 # --- Aggregated coordinator data ---
 
 
-class VaultApiData(BaseModel):
+class VaultApiData(VaultModel):
     """Aggregated data returned by the coordinator after polling all endpoints."""
 
     health: HealthStatus = Field(default_factory=HealthStatus.model_construct)
@@ -252,17 +293,20 @@ class VaultApiData(BaseModel):
     job_runs: dict[int, list[JobRun]] = Field(default_factory=dict)
     restore_point_counts: dict[int, int] = Field(default_factory=dict)
     activity: list[ActivityEntry] = Field(default_factory=list)
+    anomalies: list[Anomaly] = Field(default_factory=list)
 
 
 # --- WebSocket events ---
 
 
-class WebSocketEvent(BaseModel):
+class WebSocketEvent(VaultModel):
     """A WebSocket event from WS /api/v1/ws."""
 
     type: str
     job_id: int | None = None
+    job_name: str | None = None
     run_id: int | None = None
+    run_type: str | None = None
     item_name: str | None = None
     item_type: str | None = None
     status: str | None = None
@@ -272,6 +316,7 @@ class WebSocketEvent(BaseModel):
     rate_bytes_per_second: float | None = None
     message: str | None = None
     size_bytes: int | None = None
+    items_total: int | None = None
     items_done: int | None = None
     items_failed: int | None = None
     queue: list[dict[str, object]] | None = None
@@ -280,3 +325,11 @@ class WebSocketEvent(BaseModel):
     bytes_freed: int | None = None
     verified: bool | None = None
     error: str | None = None
+    count: int | None = None
+    """Item count carried by stale_items_detected events."""
+    items: list[dict[str, object]] | None = None
+    """Item details carried by stale_items_detected events."""
+    entry: dict[str, object] | None = None
+    """Activity log entry carried by activity events."""
+    data: dict[str, object] | None = None
+    """Structured payload carried by anomaly.* and baseline.* events."""

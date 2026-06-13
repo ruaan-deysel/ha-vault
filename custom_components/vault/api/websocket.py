@@ -36,6 +36,11 @@ _WS_TO_HA_EVENT: dict[str, str] = {
     "config_changed": "vault_config_changed",
     "activity": "vault_activity",
     "stale_items_detected": "vault_stale_items_detected",
+    "anomaly.raised": "vault_anomaly_raised",
+    "anomaly.updated": "vault_anomaly_updated",
+    "anomaly.resolved": "vault_anomaly_resolved",
+    "anomaly.acknowledged": "vault_anomaly_acknowledged",
+    "baseline.updated": "vault_baseline_updated",
 }
 
 

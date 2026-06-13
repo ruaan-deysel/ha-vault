@@ -516,10 +516,17 @@ class TestExpandedEndpointCoverage:
         client._request.return_value = {}
         assert await client.async_get_replication_jobs(1) == []
 
-        client._request.return_value = [{"id": 1}]
-        assert await client.async_get_anomalies(limit=10) == [{"id": 1}]
+        client._request.return_value = {"anomalies": [{"id": 1, "detector": "size_drift", "state": "open"}]}
+        anomalies = await client.async_get_anomalies(limit=10)
+        assert len(anomalies) == 1
+        assert anomalies[0].id == 1
+        assert anomalies[0].detector == "size_drift"
+        assert anomalies[0].state == "open"
 
         client._request.return_value = {}
+        assert await client.async_get_anomalies() == []
+
+        client._request.return_value = {"anomalies": None}
         assert await client.async_get_anomalies() == []
 
         client._request.return_value = {"ok": True}

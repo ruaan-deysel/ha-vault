@@ -15,15 +15,19 @@ PARALLEL_UPDATES = 0
 EVENT_BACKUP_STARTED = "backup_started"
 EVENT_BACKUP_COMPLETED = "backup_completed"
 EVENT_BACKUP_FAILED = "backup_failed"
+EVENT_MISSING_ITEMS = "missing_items_detected"
 
 _EVENT_ATTRIBUTE_FIELDS = (
     "run_id",
     "status",
+    "items_total",
     "items_done",
     "items_failed",
     "size_bytes",
     "message",
     "error",
+    "count",
+    "items",
 )
 
 
@@ -71,6 +75,7 @@ class VaultJobEventEntity(EventEntity, VaultJobEntity):
         EVENT_BACKUP_STARTED,
         EVENT_BACKUP_COMPLETED,
         EVENT_BACKUP_FAILED,
+        EVENT_MISSING_ITEMS,
     ]
 
     def __init__(
@@ -102,6 +107,10 @@ class VaultJobEventEntity(EventEntity, VaultJobEntity):
         elif event.type == "job_run_completed":
             status = (event.status or "").lower()
             event_type = EVENT_BACKUP_FAILED if status in ("failed", "partial") else EVENT_BACKUP_COMPLETED
+        elif event.type == "stale_items_detected":
+            # Vault skips items that no longer exist on the server and still
+            # reports the run as completed — surface the alert separately.
+            event_type = EVENT_MISSING_ITEMS
         else:
             return
 

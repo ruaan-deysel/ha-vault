@@ -11,6 +11,7 @@ import aiohttp
 from .exceptions import VaultApiError, VaultAuthenticationError, VaultConnectionError
 from .models import (
     ActivityEntry,
+    Anomaly,
     AuthStatus,
     BackupJob,
     EncryptionStatus,
@@ -556,7 +557,7 @@ class VaultApiClient:
         severity: str | None = None,
         state: str | None = None,
         limit: int | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[Anomaly]:
         """GET /api/v1/anomalies — list anomaly records."""
         endpoint = self._with_query(
             f"{API_BASE}/anomalies",
@@ -567,8 +568,11 @@ class VaultApiClient:
             },
         )
         data = await self._request("GET", endpoint)
+        # The endpoint wraps the list: {"anomalies": [...]}
+        if isinstance(data, dict):
+            data = data.get("anomalies")
         if isinstance(data, list):
-            return [entry for entry in data if isinstance(entry, dict)]
+            return [Anomaly.model_validate(entry) for entry in data if isinstance(entry, dict)]
         return []
 
     async def async_ack_bulk_anomalies(self, payload: dict[str, Any]) -> dict[str, Any]:

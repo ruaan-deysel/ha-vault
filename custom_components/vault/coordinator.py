@@ -7,13 +7,15 @@ from dataclasses import dataclass, field
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
+from pydantic import ValidationError
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import VaultApiClient, VaultApiError, VaultAuthenticationError, VaultConnectionError, VaultWebSocketClient
-from .api.models import StorageDestination, VaultApiData
+from .api.models import Anomaly, StorageDestination, VaultApiData
 from .const import ACTIVE_UPDATE_INTERVAL_SECONDS, DEFAULT_UPDATE_INTERVAL_SECONDS, DOMAIN, LOGGER
 
 if TYPE_CHECKING:
@@ -54,6 +56,7 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
         )
         self.client = client
         self._storage_issue_ids: set[str] = set()
+        self._anomaly_issue_ids: set[str] = set()
 
     @staticmethod
     def _job_run_status_text(status: object) -> str:
@@ -101,6 +104,34 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
             ir.async_delete_issue(self.hass, DOMAIN, issue_id)
         self._storage_issue_ids = current_issue_ids
 
+    def _update_anomaly_repair_issues(self, anomalies: list[Anomaly], job_names: dict[int, str]) -> None:
+        """Create or clear repair issues for open anomalies (Vault alerts)."""
+        current_issue_ids: set[str] = set()
+        for anomaly in anomalies:
+            issue_id = f"anomaly_{anomaly.id}"
+            current_issue_ids.add(issue_id)
+            if anomaly.scope_kind == "job":
+                scope = job_names.get(anomaly.scope_id, f"job {anomaly.scope_id}")
+            else:
+                scope = f"{anomaly.scope_kind} {anomaly.scope_id}".strip()
+            severity = ir.IssueSeverity.ERROR if anomaly.severity == "critical" else ir.IssueSeverity.WARNING
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=False,
+                severity=severity,
+                translation_key="anomaly",
+                translation_placeholders={
+                    "scope": scope,
+                    "summary": anomaly.summary or anomaly.metric or anomaly.detector,
+                },
+            )
+        stale_issue_ids = self._anomaly_issue_ids - current_issue_ids
+        for issue_id in stale_issue_ids:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
+        self._anomaly_issue_ids = current_issue_ids
+
     async def _async_update_data(self) -> VaultApiData:
         """Fetch data from all Vault API endpoints.
 
@@ -118,6 +149,7 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
             storage = await self.client.async_get_storage()
             jobs = await self.client.async_get_jobs()
             activity = await self.client.async_get_activity()
+            anomalies = await self.client.async_get_anomalies(state="open")
 
             # Fetch most recent run + restore points per job (bounded parallelism)
             semaphore = asyncio.Semaphore(5)
@@ -131,6 +163,10 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
             raise ConfigEntryAuthFailed(f"Authentication failed: {err}") from err
         except VaultApiError as err:
             raise UpdateFailed(f"Vault API error: {err}") from err
+        except ValidationError as err:
+            # Defense in depth: a payload shape we don't handle yet must mark
+            # the update failed, not crash with an unexpected-error traceback.
+            raise UpdateFailed(f"Unexpected Vault API payload: {err}") from err
 
         data = VaultApiData(
             health=health,
@@ -142,9 +178,11 @@ class VaultDataUpdateCoordinator(DataUpdateCoordinator[VaultApiData]):
             job_runs=job_runs,
             restore_point_counts=restore_point_counts,
             activity=activity,
+            anomalies=anomalies,
         )
 
         self._update_storage_repair_issues(storage)
+        self._update_anomaly_repair_issues(anomalies, {job.id: job.name for job in jobs})
 
         # Adjust polling rate: faster when a job is running
         has_running = any(runs and self._job_run_status_text(runs[0].status) == "running" for runs in job_runs.values())

@@ -9,6 +9,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.vault.api.models import (
     ActivityEntry,
+    Anomaly,
     AuthStatus,
     BackupJob,
     EncryptionStatus,
@@ -130,6 +131,23 @@ def mock_activity() -> list[ActivityEntry]:
 
 
 @pytest.fixture
+def mock_anomalies() -> list[Anomaly]:
+    """Return mock open anomalies."""
+    return [
+        Anomaly(
+            id=11,
+            detector="size_drift",
+            severity="critical",
+            scope_kind="job",
+            scope_id=1,
+            metric="total_bytes_low",
+            summary="backup shrank to 0 B (0% of expected 136.4 MB)",
+            state="open",
+        ),
+    ]
+
+
+@pytest.fixture
 def mock_vault_data(
     mock_health: HealthStatus,
     mock_settings: Settings,
@@ -139,6 +157,7 @@ def mock_vault_data(
     mock_job_runs: dict[int, list[JobRun]],
     mock_restore_point_counts: dict[int, int],
     mock_activity: list[ActivityEntry],
+    mock_anomalies: list[Anomaly],
 ) -> VaultApiData:
     """Return aggregated mock VaultApiData."""
     return VaultApiData(
@@ -151,6 +170,7 @@ def mock_vault_data(
         job_runs=mock_job_runs,
         restore_point_counts=mock_restore_point_counts,
         activity=mock_activity,
+        anomalies=mock_anomalies,
     )
 
 
@@ -162,6 +182,7 @@ def mock_api_client(
     mock_storage: list[StorageDestination],
     mock_jobs: list[BackupJob],
     mock_activity: list[ActivityEntry],
+    mock_anomalies: list[Anomaly],
 ) -> MagicMock:
     """Create a mocked VaultApiClient."""
     client = MagicMock()
@@ -204,6 +225,7 @@ def mock_api_client(
     )
     client.async_restore = AsyncMock(return_value={"status": "started"})
     client.async_get_activity = AsyncMock(return_value=mock_activity)
+    client.async_get_anomalies = AsyncMock(return_value=mock_anomalies)
     client.async_get_auth_status = AsyncMock(return_value=AuthStatus(auth_required=False))
     return client
 

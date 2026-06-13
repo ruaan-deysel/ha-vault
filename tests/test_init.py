@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -260,6 +260,119 @@ async def test_ws_event_callback(
     assert len(events) == 1
     assert events[0].data["type"] == "job_run_started"
     assert events[0].data["job_id"] == 1
+
+
+async def test_ws_failed_run_fires_backup_failed_event(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+    mock_websocket: MagicMock,
+) -> None:
+    """A failed/partial run must fire vault_backup_failed, never vault_backup_completed."""
+    ws_callback = mock_websocket.register_listener.call_args_list[0][0][0]
+
+    completed_events: list = []
+    failed_events: list = []
+    hass.bus.async_listen("vault_backup_completed", completed_events.append)
+    hass.bus.async_listen("vault_backup_failed", failed_events.append)
+
+    ws_callback(WebSocketEvent(type="job_run_completed", job_id=1, status="failed", items_failed=1))
+    ws_callback(WebSocketEvent(type="job_run_completed", job_id=2, status="partial", items_failed=1))
+    await hass.async_block_till_done()
+
+    assert len(completed_events) == 0
+    assert len(failed_events) == 2
+    assert failed_events[0].data["status"] == "failed"
+    assert failed_events[1].data["status"] == "partial"
+
+
+async def test_ws_successful_run_fires_backup_completed_event(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+    mock_websocket: MagicMock,
+) -> None:
+    """A successful run still fires vault_backup_completed."""
+    ws_callback = mock_websocket.register_listener.call_args_list[0][0][0]
+
+    completed_events: list = []
+    hass.bus.async_listen("vault_backup_completed", completed_events.append)
+
+    ws_callback(WebSocketEvent(type="job_run_completed", job_id=1, status="completed"))
+    await hass.async_block_till_done()
+
+    assert len(completed_events) == 1
+
+
+async def test_ws_state_change_triggers_coordinator_refresh(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+    mock_websocket: MagicMock,
+) -> None:
+    """State-changing WS events request an immediate coordinator refresh."""
+    ws_callback = mock_websocket.register_listener.call_args_list[0][0][0]
+    coordinator = mock_setup_entry.runtime_data.coordinator
+
+    with patch.object(coordinator, "async_request_refresh", new=AsyncMock()) as mock_refresh:
+        ws_callback(WebSocketEvent(type="job_run_completed", job_id=1, status="failed"))
+        await hass.async_block_till_done()
+        assert mock_refresh.await_count == 1
+
+        # Progress events are high-frequency noise — no refresh
+        ws_callback(WebSocketEvent(type="backup_progress", job_id=1, percent=50))
+        await hass.async_block_till_done()
+        assert mock_refresh.await_count == 1
+
+        ws_callback(WebSocketEvent(type="anomaly.raised", data={"ID": 1}))
+        await hass.async_block_till_done()
+        assert mock_refresh.await_count == 2
+
+
+async def test_ws_stale_items_event_carries_payload(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+    mock_websocket: MagicMock,
+) -> None:
+    """stale_items_detected events expose count and items on the HA bus."""
+    ws_callback = mock_websocket.register_listener.call_args_list[0][0][0]
+
+    events: list = []
+    hass.bus.async_listen("vault_stale_items_detected", events.append)
+
+    ws_callback(
+        WebSocketEvent(
+            type="stale_items_detected",
+            job_id=75,
+            count=1,
+            items=[{"item_id": 104, "item_name": "jackett", "item_type": "container"}],
+        )
+    )
+    await hass.async_block_till_done()
+
+    assert len(events) == 1
+    assert events[0].data["count"] == 1
+    assert events[0].data["items"][0]["item_name"] == "jackett"
+
+
+async def test_ws_anomaly_event_fires_on_bus(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+    mock_websocket: MagicMock,
+) -> None:
+    """anomaly.* WS events are mapped to HA bus events with their payload."""
+    ws_callback = mock_websocket.register_listener.call_args_list[0][0][0]
+
+    events: list = []
+    hass.bus.async_listen("vault_anomaly_updated", events.append)
+
+    ws_callback(
+        WebSocketEvent(
+            type="anomaly.updated",
+            data={"ID": 11, "Severity": "critical", "Summary": "backup shrank to 0 B"},
+        )
+    )
+    await hass.async_block_till_done()
+
+    assert len(events) == 1
+    assert events[0].data["data"]["Summary"] == "backup shrank to 0 B"
 
 
 async def test_service_run_backup_by_name(

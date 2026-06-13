@@ -21,9 +21,9 @@ async def test_global_binary_sensors_created(
     binary_entries = [e for e in entries if e.domain == "binary_sensor"]
 
     # Global: vault_online (1)
-    # Per-job: 3 jobs x 2 templates = 6
-    # Total: 7
-    assert len(binary_entries) == 7
+    # Per-job: 3 jobs x 3 templates (running, last_success, problem) = 9
+    # Total: 10
+    assert len(binary_entries) == 10
 
 
 async def test_vault_online_sensor(
@@ -139,5 +139,45 @@ async def test_dynamic_job_detection_binary_sensor(
     entries_after = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
     binary_count_after = len([e for e in entries_after if e.domain == "binary_sensor"])
 
-    # Should have 2 new per-job binary sensors for the new job
-    assert binary_count_after == binary_count_before + 2
+    # Should have 3 new per-job binary sensors for the new job
+    assert binary_count_after == binary_count_before + 3
+
+
+async def test_per_job_problem_sensor(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """Job 1 has an open anomaly — its problem sensor is on with details."""
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
+
+    problem = next(
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_1_problem"),
+        None,
+    )
+    assert problem is not None
+    state = hass.states.get(problem.entity_id)
+    assert state is not None
+    assert state.state == "on"
+    anomalies = state.attributes["anomalies"]
+    assert anomalies[0]["detector"] == "size_drift"
+    assert anomalies[0]["severity"] == "critical"
+
+
+async def test_per_job_problem_sensor_off_without_anomaly(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """Jobs without open anomalies report no problem."""
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
+
+    problem = next(
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_job_2_problem"),
+        None,
+    )
+    assert problem is not None
+    state = hass.states.get(problem.entity_id)
+    assert state is not None
+    assert state.state == "off"
+    assert "anomalies" not in state.attributes

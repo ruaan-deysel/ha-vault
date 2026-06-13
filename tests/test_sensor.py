@@ -29,12 +29,13 @@ async def test_global_sensors_created(
     sensor_entries = [e for e in entries if e.domain == "sensor"]
 
     # Global: vault_status, vault_version, vault_mode, jobs_total, jobs_enabled,
-    # encryption_status, runner_queue_length, runner_current_job_id (8)
+    # encryption_status, runner_queue_length, runner_current_job_id,
+    # open_anomalies (9)
     # Per-job: 3 jobs x 8 sensors = 24
     # Per-job progress: 3 jobs x 1 = 3
     # Per-storage: 2 storage x 6 sensors = 12
-    # Total: 47
-    assert len(sensor_entries) == 47
+    # Total: 48
+    assert len(sensor_entries) == 48
 
 
 async def test_vault_status_sensor(
@@ -402,3 +403,24 @@ async def test_job_last_failure_reason_fallback_status_text(mock_vault_data: Vau
     failed_run = JobRun(id=601, job_id=13, status=JobRunStatus.FAILED, log='[1,{"status":"ok","name":"x"}]')
     data = mock_vault_data.model_copy(update={"job_runs": {13: [failed_run]}})
     assert _job_last_failure_reason(data, 13) == "Last run status: failed"
+
+
+async def test_open_anomalies_sensor(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """The open anomalies sensor counts Vault alerts and lists details."""
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(registry, mock_setup_entry.entry_id)
+
+    anomalies_entry = next(
+        (e for e in entries if e.unique_id == f"{mock_setup_entry.entry_id}_open_anomalies"),
+        None,
+    )
+    assert anomalies_entry is not None
+    state = hass.states.get(anomalies_entry.entity_id)
+    assert state is not None
+    assert state.state == "1"
+    anomalies = state.attributes["anomalies"]
+    assert anomalies[0]["detector"] == "size_drift"
+    assert anomalies[0]["job"] == "Daily Backup"

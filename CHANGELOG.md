@@ -6,6 +6,26 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ## [Unreleased]
 
+## [2026.06.03] - 2026-06-13
+
+### Added
+
+- **Anomaly alerts now flow into Home Assistant** ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27)): the coordinator polls Vault's open anomalies (failure streaks, size drift, etc. — the same alerts Vault sends to Unraid notifications)
+  - New **"Open anomalies" sensor** with per-anomaly details (detector, severity, summary, affected job) as attributes
+  - New per-job **"Problem" binary sensor** that turns on while the job has an open anomaly
+  - A **repair issue** is raised for every open anomaly (error severity for critical anomalies) and cleared automatically when Vault resolves or acknowledges it
+  - `anomaly.raised` / `anomaly.updated` / `anomaly.resolved` / `anomaly.acknowledged` and `baseline.updated` WebSocket events are now forwarded to the Home Assistant event bus (`vault_anomaly_*`, `vault_baseline_updated`)
+- **New `vault_backup_failed` bus event**: a `job_run_completed` WebSocket message with a `failed`/`partial` status now fires `vault_backup_failed` instead of `vault_backup_completed`, so automations can no longer mistake a failed backup for a successful one ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27))
+- **New `missing_items_detected` event type** on the per-job event entities, fired when Vault skips items that no longer exist on the server (with the item list as attributes) — previously these runs looked like clean completions
+- **Instant entity sync after state changes**: job start/completion, verify completion, storage health/capacity changes, anomaly updates, stale-item detections, config changes, and imports now trigger an immediate (debounced) coordinator refresh, so sensors update within ~1 second instead of waiting up to 60 seconds for the next poll
+
+### Fixed
+
+- **Integration no longer locks up during backup runs** ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27)): Vault reports `null` for fields like `duration_seconds` while a run is in progress, which crashed every coordinator poll for the duration of the run and made all entities unavailable (the "lockup" seen when stress-testing the backup buttons). API models now treat explicit nulls as missing values, and unexpected payload shapes mark the update as failed instead of raising an unhandled error
+- **Failed backups no longer show as completed** ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27)): the combination of the lockup fix (status sensors froze mid-run) and the corrected completion event mapping means job status, "Last run successful", and event entities now reflect failures in real time
+- **WebSocket event payloads are no longer dropped**: `stale_items_detected` (count + items), `activity` (log entry), and anomaly events (full anomaly data) previously arrived on the Home Assistant bus with only their type — the payload fields were missing from the event model
+- `async_get_anomalies` API client method now unwraps the `{"anomalies": [...]}` response envelope (it previously always returned an empty list)
+
 ## [2026.06.02] - 2026-06-13
 
 - Branding updates

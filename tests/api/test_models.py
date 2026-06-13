@@ -6,9 +6,13 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from pydantic import ValidationError
+import pytest
+
 from custom_components.vault.api.models import (
     ActivityEntry,
     ActivityLevel,
+    Anomaly,
     BackupJob,
     EncryptionStatus,
     HealthStatus,
@@ -262,3 +266,112 @@ class TestWebSocketEvent:
         dumped = e.model_dump(exclude_none=True)
         assert "run_id" not in dumped
         assert dumped["job_id"] == 1
+
+
+class TestNullTolerance:
+    """Explicit nulls from the API must fall back to field defaults.
+
+    Vault sends ``null`` for fields that have no value yet — e.g.
+    ``duration_seconds`` and ``completed_at`` while a run is in progress.
+    A poll during a running job previously crashed the whole coordinator
+    update, taking every entity unavailable (issue #27 stress test).
+    """
+
+    def test_job_run_with_nulls_while_running(self) -> None:
+        """A running job's history entry validates with nulled fields."""
+        run = JobRun.model_validate(
+            {
+                "id": 170,
+                "job_id": 73,
+                "status": "running",
+                "completed_at": None,
+                "log": None,
+                "items_total": None,
+                "items_done": None,
+                "items_failed": None,
+                "size_bytes": None,
+                "duration_seconds": None,
+            }
+        )
+        assert run.status == JobRunStatus.RUNNING
+        assert run.duration_seconds == 0
+        assert run.items_total == 0
+        assert run.size_bytes == 0
+        assert run.completed_at is None
+        assert run.log == ""
+
+    def test_backup_job_with_nulls(self) -> None:
+        """Nulled optional job fields fall back to defaults."""
+        job = BackupJob.model_validate(
+            {"id": 1, "name": "Job", "schedule": None, "retention_count": None, "enabled": None}
+        )
+        assert job.schedule == ""
+        assert job.retention_count == 5
+        assert job.enabled is True
+
+    def test_required_fields_still_required(self) -> None:
+        """Nulls on required fields still fail validation."""
+        with pytest.raises(ValidationError):
+            JobRun.model_validate({"id": None, "job_id": 1})
+
+
+class TestAnomaly:
+    """Tests for the Anomaly model."""
+
+    def test_basic(self) -> None:
+        """An anomaly record from the REST API validates."""
+        anomaly = Anomaly.model_validate(
+            {
+                "id": 13,
+                "detector": "reliability",
+                "severity": "critical",
+                "scope_kind": "job",
+                "scope_id": 32,
+                "metric": "failure_streak",
+                "summary": "job has failed 5 runs in a row",
+                "state": "open",
+            }
+        )
+        assert anomaly.id == 13
+        assert anomaly.scope_id == 32
+        assert anomaly.severity == "critical"
+
+
+class TestWebSocketEventPayloads:
+    """WS payload fields used by alert events must survive parsing."""
+
+    def test_stale_items_payload(self) -> None:
+        """stale_items_detected events keep count and items."""
+        e = WebSocketEvent.model_validate(
+            {
+                "type": "stale_items_detected",
+                "job_id": 75,
+                "count": 1,
+                "items": [{"item_id": 104, "item_name": "jackett", "item_type": "container"}],
+            }
+        )
+        assert e.count == 1
+        assert e.items is not None
+        assert e.items[0]["item_name"] == "jackett"
+
+    def test_anomaly_payload(self) -> None:
+        """anomaly.* events keep the structured data payload."""
+        e = WebSocketEvent.model_validate(
+            {
+                "type": "anomaly.updated",
+                "data": {"ID": 11, "Severity": "critical", "Summary": "backup shrank to 0 B"},
+            }
+        )
+        assert e.data is not None
+        assert e.data["Severity"] == "critical"
+
+    def test_activity_payload(self) -> None:
+        """activity events keep the embedded entry."""
+        e = WebSocketEvent.model_validate(
+            {
+                "type": "activity",
+                "entry": {"id": 810, "level": "info", "message": "Backup started"},
+            }
+        )
+        assert e.entry is not None
+        assert e.entry["message"] == "Backup started"

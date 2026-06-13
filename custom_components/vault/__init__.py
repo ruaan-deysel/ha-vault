@@ -31,6 +31,26 @@ PLATFORMS: list[Platform] = [
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
+# WS events that change state shown by coordinator-backed entities. Each one
+# triggers a (debounced) refresh so the UI syncs immediately instead of
+# waiting for the next poll.
+REFRESH_WS_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        "job_run_started",
+        "job_run_completed",
+        "verify_complete",
+        "stale_items_detected",
+        "anomaly.raised",
+        "anomaly.updated",
+        "anomaly.resolved",
+        "anomaly.acknowledged",
+        "storage_health",
+        "storage_capacity_updated",
+        "config_changed",
+        "import_completed",
+    }
+)
+
 # Service schemas
 SERVICE_RUN_BACKUP = "run_backup"
 SERVICE_RESTORE = "restore"
@@ -239,6 +259,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: VaultConfigEntry) -> boo
     # Fire HA events from WebSocket messages and track progress
     def _on_ws_event(event: WebSocketEvent) -> None:
         ha_event = VaultWebSocketClient.get_ha_event_type(event.type)
+        # A failed run must never fire vault_backup_completed — automations
+        # keying on the event type would treat the failure as a success.
+        if event.type == "job_run_completed" and (event.status or "").lower() in ("failed", "partial"):
+            ha_event = "vault_backup_failed"
         if ha_event:
             hass.bus.async_fire(ha_event, {"entry_id": entry.entry_id, **event.model_dump(exclude_none=True)})
 
@@ -251,6 +275,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: VaultConfigEntry) -> boo
                 data.progress.pop(job_id, None)
             elif event.type == "job_run_started":
                 data.progress[job_id] = 0
+
+        # Keep coordinator-backed entities in sync with Vault state changes
+        # (job status, anomalies, storage health) without waiting for the
+        # next poll. async_request_refresh is debounced, so event bursts
+        # collapse into a single API round-trip.
+        if event.type in REFRESH_WS_EVENT_TYPES:
+            entry.async_create_background_task(
+                hass,
+                coordinator.async_request_refresh(),
+                name=f"vault refresh after {event.type}",
+            )
 
     # Register the listener before connecting so no early events are dropped
     websocket.register_listener(_on_ws_event)

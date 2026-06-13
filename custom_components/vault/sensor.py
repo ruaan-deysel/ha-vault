@@ -29,6 +29,7 @@ class VaultSensorEntityDescription(SensorEntityDescription):
     """Describes a Vault sensor entity."""
 
     value_fn: Callable[[VaultApiData], Any]
+    attributes_fn: Callable[[VaultApiData], dict[str, Any] | None] | None = None
 
 
 def _runner_queue_length(data: VaultApiData) -> int:
@@ -46,6 +47,25 @@ def _runner_current_job(data: VaultApiData) -> str:
         return "idle"
     job = next((j for j in data.jobs if j.id == job_id), None)
     return job.name if job else str(job_id)
+
+
+def _open_anomalies_attributes(data: VaultApiData) -> dict[str, Any] | None:
+    """List the open anomalies (Vault alerts) behind the count."""
+    if not data.anomalies:
+        return None
+    job_names = {job.id: job.name for job in data.jobs}
+    return {
+        "anomalies": [
+            {
+                "detector": a.detector,
+                "severity": a.severity,
+                "summary": a.summary,
+                "job": job_names.get(a.scope_id) if a.scope_kind == "job" else None,
+                "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
+            }
+            for a in data.anomalies
+        ]
+    }
 
 
 def _auto_data_size_unit(num_bytes: float | None) -> UnitOfInformation | None:
@@ -114,6 +134,13 @@ GLOBAL_SENSOR_DESCRIPTIONS: tuple[VaultSensorEntityDescription, ...] = (
         translation_key="runner_current_job_id",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=_runner_current_job,
+    ),
+    VaultSensorEntityDescription(
+        key="open_anomalies",
+        translation_key="open_anomalies",
+        native_unit_of_measurement="anomalies",
+        value_fn=lambda d: len(d.anomalies),
+        attributes_fn=_open_anomalies_attributes,
     ),
 )
 
@@ -525,6 +552,13 @@ class VaultSensor(SensorEntity, VaultEntity):
     def native_value(self) -> Any:
         """Return the sensor value."""
         return self.entity_description.value_fn(self.coordinator.data)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra attributes, if the description provides them."""
+        if self.entity_description.attributes_fn is None:
+            return None
+        return self.entity_description.attributes_fn(self.coordinator.data)
 
 
 class VaultJobSensor(SensorEntity, VaultJobEntity):

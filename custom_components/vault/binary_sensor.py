@@ -59,11 +59,13 @@ class VaultJobBinarySensorEntityDescription(BinarySensorEntityDescription):
     """Describes a per-job Vault binary sensor entity."""
 
     is_on_fn: Callable[[VaultApiData, int], bool]
+    attributes_fn: Callable[[VaultApiData, int], dict[str, object] | None] | None = None
 
 
 _JOB_BINARY_SENSOR_LABELS: dict[str, str] = {
     "job_running": "Running",
     "job_last_success": "Last run successful",
+    "job_problem": "Problem",
 }
 
 
@@ -85,6 +87,35 @@ def _is_job_last_success(data: VaultApiData, job_id: int) -> bool:
     return status_text == "completed"
 
 
+def _job_anomalies(data: VaultApiData, job_id: int) -> list:
+    """Return open anomalies scoped to this job."""
+    return [a for a in data.anomalies if a.scope_kind == "job" and a.scope_id == job_id]
+
+
+def _job_has_problem(data: VaultApiData, job_id: int) -> bool:
+    """Return True when Vault reports an open anomaly for this job."""
+    return bool(_job_anomalies(data, job_id))
+
+
+def _job_problem_attributes(data: VaultApiData, job_id: int) -> dict[str, object] | None:
+    """Expose the anomaly details behind a job problem state."""
+    anomalies = _job_anomalies(data, job_id)
+    if not anomalies:
+        return None
+    return {
+        "anomalies": [
+            {
+                "detector": a.detector,
+                "severity": a.severity,
+                "summary": a.summary,
+                "first_seen_at": a.first_seen_at.isoformat() if a.first_seen_at else None,
+                "last_seen_at": a.last_seen_at.isoformat() if a.last_seen_at else None,
+            }
+            for a in anomalies
+        ]
+    }
+
+
 PER_JOB_BINARY_SENSOR_TEMPLATES: tuple[VaultJobBinarySensorEntityDescription, ...] = (
     VaultJobBinarySensorEntityDescription(
         key="running",
@@ -96,6 +127,13 @@ PER_JOB_BINARY_SENSOR_TEMPLATES: tuple[VaultJobBinarySensorEntityDescription, ..
         key="last_success",
         translation_key="job_last_success",
         is_on_fn=_is_job_last_success,
+    ),
+    VaultJobBinarySensorEntityDescription(
+        key="problem",
+        translation_key="job_problem",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        is_on_fn=_job_has_problem,
+        attributes_fn=_job_problem_attributes,
     ),
 )
 
@@ -207,3 +245,10 @@ class VaultJobBinarySensor(BinarySensorEntity, VaultJobEntity):
     def is_on(self) -> bool:
         """Return True if the binary sensor is on for this job."""
         return self.entity_description.is_on_fn(self.coordinator.data, self._job_id)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, object] | None:
+        """Return extra attributes for this job, if the description provides them."""
+        if self.entity_description.attributes_fn is None:
+            return None
+        return self.entity_description.attributes_fn(self.coordinator.data, self._job_id)
