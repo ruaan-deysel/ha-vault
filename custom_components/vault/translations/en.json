@@ -60,6 +60,21 @@
           "tls": "Enable to use HTTPS/WSS for encrypted connections",
           "api_key": "API key (leave empty if authentication is not required)"
         }
+      },
+      "zeroconf": {
+        "title": "Vault Instance Discovered",
+        "description": "A Vault instance was discovered at {host}:{port}. Confirm to add it to your Home Assistant instance.",
+        "data": {}
+      },
+      "reauth": {
+        "title": "Re-authenticate Vault",
+        "description": "The API key for your Vault instance is no longer valid. Please enter a new API key.",
+        "data": {
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "api_key": "The new API key for your Vault instance"
+        }
       }
     },
     "error": {
