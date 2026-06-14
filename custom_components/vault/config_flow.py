@@ -84,7 +84,108 @@ class VaultConfigFlow(ConfigFlow, domain=DOMAIN):
         )
 
     # ------------------------------------------------------------------
-    # Step 2: Auth — user provides API key (only if auth required)
+    # Step 2: Zeroconf discovery — auto-discovered instance confirmation
+    # ------------------------------------------------------------------
+
+    async def async_step_zeroconf(
+        self,
+        discovery_info: dict[str, Any],
+    ) -> ConfigFlowResult:
+        """Handle zeroconf discovery of Vault instances."""
+        # Extract host and port from discovery info
+        host = discovery_info.get("host", "")
+        port = discovery_info.get("port", DEFAULT_PORT)
+
+        # Read TLS flag and API path from TXT records
+        properties = discovery_info.get("properties", {})
+        tls = properties.get("tls", "false").lower() == "true"
+
+        # Set unique ID and check for duplicates
+        unique_id = f"{host}:{port}"
+        await self.async_set_unique_id(unique_id)
+        self._abort_if_unique_id_configured()
+
+        # Store discovery info for potential reuse
+        self._user_input = {CONF_HOST: host, CONF_PORT: port, CONF_TLS: tls}
+
+        # Try to validate connection
+        session = async_get_clientsession(self.hass)
+        client = VaultApiClient(host=host, port=port, session=session, tls=tls)
+
+        try:
+            health = await client.async_get_health()
+        except VaultAuthenticationError:
+            # Auth required — proceed to auth step
+            return await self.async_step_zeroconf_confirm()
+        except (VaultConnectionError, Exception):  # noqa: BLE001
+            # Connection failed — abort discovery
+            return self.async_abort(reason="cannot_connect")
+
+        # Connection successful, no auth needed — create entry
+        self._health_version = health.version
+        return self.async_create_entry(
+            title=f"Vault ({health.version})" if health.version else f"Vault ({host})",
+            data=self._user_input,
+        )
+
+    async def async_step_zeroconf_confirm(
+        self,
+        user_input: dict[str, Any] | None = None,
+    ) -> ConfigFlowResult:
+        """Confirmation step for zeroconf discovery (may require auth)."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # User provided API key if needed
+            api_key = user_input.get(CONF_API_KEY, "").strip()
+            if api_key:
+                self._user_input[CONF_API_KEY] = api_key
+
+            # Validate with API key
+            host = self._user_input[CONF_HOST]
+            port = self._user_input[CONF_PORT]
+            tls = self._user_input.get(CONF_TLS, False)
+            session = async_get_clientsession(self.hass)
+            client = VaultApiClient(
+                host=host,
+                port=port,
+                session=session,
+                tls=tls,
+                api_key=self._user_input.get(CONF_API_KEY),
+            )
+
+            try:
+                health = await client.async_get_health()
+            except VaultConnectionError:
+                errors["base"] = "cannot_connect"
+            except VaultAuthenticationError:
+                errors["base"] = "invalid_auth"
+            except Exception:  # noqa: BLE001
+                errors["base"] = "unknown"
+            else:
+                self._health_version = health.version
+                return self.async_create_entry(
+                    title=f"Vault ({health.version})" if health.version else f"Vault ({host})",
+                    data=self._user_input,
+                )
+
+        # Show confirmation form with optional API key field
+        return self.async_show_form(
+            step_id="zeroconf_confirm",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional(CONF_API_KEY): str,
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "host": self._user_input[CONF_HOST],
+                "port": str(self._user_input[CONF_PORT]),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Step 3: Auth — user provides API key (only if auth required)
     # ------------------------------------------------------------------
 
     async def async_step_auth(

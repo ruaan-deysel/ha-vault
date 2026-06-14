@@ -25,6 +25,16 @@
           "api_key": "The API key configured in your Vault instance"
         }
       },
+      "zeroconf_confirm": {
+        "title": "Confirm Vault Discovery",
+        "description": "Vault instance discovered at {host}:{port}. Enter an API key if required, otherwise leave blank.",
+        "data": {
+          "api_key": "API Key"
+        },
+        "data_description": {
+          "api_key": "API key (optional, only if your Vault instance requires authentication)"
+        }
+      },
       "reauth_confirm": {
         "title": "Re-authenticate Vault",
         "description": "The API key for this Vault instance is no longer valid. Please enter a new API key.",
@@ -59,6 +69,7 @@
     },
     "abort": {
       "already_configured": "This Vault instance is already configured.",
+      "cannot_connect": "Unable to connect to the discovered Vault instance. Please verify it is running and reachable.",
       "reauth_successful": "Re-authentication was successful."
     }
   },

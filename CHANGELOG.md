@@ -6,6 +6,10 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ## [Unreleased]
 
+### Added
+
+- **Auto-discovery of Vault daemons via zeroconf/mDNS** ([#28](https://github.com/ruaan-deysel/ha-vault/issues/28)): Home Assistant can now automatically discover Vault instances on the local network using the `_vault._tcp.local.` service type. When a Vault daemon is running and bound to a non-loopback address, it appears in Settings → Devices & Services with automatic host/port detection and TLS configuration from mDNS advertisements. Users can confirm discovery with optional API key authentication if required.
+
 ## [2026.06.03] - 2026-06-13
 
 ### Added
