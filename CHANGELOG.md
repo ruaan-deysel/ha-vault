@@ -6,6 +6,12 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ## [Unreleased]
 
+## [2026.06.05] - 2026-06-14
+
+### Fixed
+
+- **Zeroconf discovery no longer crashes with AttributeError** ([#30](https://github.com/ruaan-deysel/ha-vault/issues/30)): The config flow was attempting to use dictionary `.get()` method on a `ZeroconfServiceInfo` dataclass object passed by Home Assistant during device discovery. Now correctly uses attribute access (`.host`, `.port`, `.properties`) instead of dictionary access, and properly handles `None` values for port with fallback to `DEFAULT_PORT`.
+
 ## [2026.06.04] - 2026-06-14
 
 ### Added
@@ -15,11 +21,9 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 ## [2026.06.03] - 2026-06-13
 
 ### Added
-
 - **Anomaly alerts now flow into Home Assistant** ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27)): the coordinator polls Vault's open anomalies (failure streaks, size drift, etc. — the same alerts Vault sends to Unraid notifications)
   - New **"Open anomalies" sensor** with per-anomaly details (detector, severity, summary, affected job) as attributes
   - New per-job **"Problem" binary sensor** that turns on while the job has an open anomaly
-  - A **repair issue** is raised for every open anomaly (error severity for critical anomalies) and cleared automatically when Vault resolves or acknowledges it
   - `anomaly.raised` / `anomaly.updated` / `anomaly.resolved` / `anomaly.acknowledged` and `baseline.updated` WebSocket events are now forwarded to the Home Assistant event bus (`vault_anomaly_*`, `vault_baseline_updated`)
 - **New `vault_backup_failed` bus event**: a `job_run_completed` WebSocket message with a `failed`/`partial` status now fires `vault_backup_failed` instead of `vault_backup_completed`, so automations can no longer mistake a failed backup for a successful one ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27))
 - **New `missing_items_detected` event type** on the per-job event entities, fired when Vault skips items that no longer exist on the server (with the item list as attributes) — previously these runs looked like clean completions

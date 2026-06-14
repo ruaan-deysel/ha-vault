@@ -8,6 +8,7 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.service_info.zeroconf import ZeroconfServiceInfo
 
 from .api import VaultApiClient, VaultAuthenticationError, VaultConnectionError
 from .const import CONF_API_KEY, CONF_HOST, CONF_PORT, CONF_TLS, DEFAULT_PORT, DOMAIN
@@ -89,15 +90,15 @@ class VaultConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_zeroconf(
         self,
-        discovery_info: dict[str, Any],
+        discovery_info: ZeroconfServiceInfo,
     ) -> ConfigFlowResult:
         """Handle zeroconf discovery of Vault instances."""
         # Extract host and port from discovery info
-        host = discovery_info.get("host", "")
-        port = discovery_info.get("port", DEFAULT_PORT)
+        host = discovery_info.host
+        port = discovery_info.port or DEFAULT_PORT
 
         # Read TLS flag and API path from TXT records
-        properties = discovery_info.get("properties", {})
+        properties = discovery_info.properties or {}
         tls = properties.get("tls", "false").lower() == "true"
 
         # Set unique ID and check for duplicates
