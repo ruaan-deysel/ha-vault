@@ -6,6 +6,12 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ## [Unreleased]
 
+## [2026.06.06] - 2026-06-20
+
+### Added
+
+- **UI-based removal of orphaned devices** ([#34](https://github.com/ruaan-deysel/ha-vault/issues/34)): Implemented `async_remove_config_entry_device` so Home Assistant's device UI can remove orphaned backup-job or storage-target devices without a full integration reload. The main Vault device is protected from accidental deletion; any other device may be removed manually via the UI.
+
 ## [2026.06.05] - 2026-06-14
 
 ### Fixed

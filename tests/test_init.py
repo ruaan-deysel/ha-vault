@@ -7,13 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.vault import _get_entry_from_call, async_setup
+from custom_components.vault import _get_entry_from_call, async_remove_config_entry_device, async_setup
 from custom_components.vault.api.exceptions import VaultApiError, VaultConnectionError
 from custom_components.vault.api.models import StorageTestResult, WebSocketEvent
 from custom_components.vault.const import DOMAIN
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.helpers import device_registry as dr
 
 
 async def test_setup_and_unload(
@@ -497,3 +498,50 @@ async def test_get_entry_from_call_with_matching_config_entry_id(
 
     resolved = _get_entry_from_call(hass, call)
     assert resolved.entry_id == mock_setup_entry.entry_id
+
+
+async def test_async_remove_config_entry_device_main_device_blocked(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """The main Vault device must not be removable via the UI."""
+    device_registry = dr.async_get(hass)
+    devices = dr.async_entries_for_config_entry(device_registry, mock_setup_entry.entry_id)
+    assert devices, "Expected at least one device to be registered"
+
+    host = mock_setup_entry.data["host"]
+    port = mock_setup_entry.data["port"]
+    main_device = next(
+        (d for d in devices if (DOMAIN, f"{host}:{port}") in d.identifiers),
+        None,
+    )
+    assert main_device is not None, "Main Vault device not found in device registry"
+
+    result = await async_remove_config_entry_device(hass, mock_setup_entry, main_device)
+    assert result is False
+
+
+async def test_async_remove_config_entry_device_orphan_allowed(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """Orphaned (non-main) devices may be removed via the UI."""
+    orphan_device = MagicMock()
+    orphan_device.identifiers = {(DOMAIN, "orphaned_job_42")}
+
+    result = await async_remove_config_entry_device(hass, mock_setup_entry, orphan_device)
+    assert result is True
+
+
+async def test_async_remove_config_entry_device_different_domain_allowed(
+    hass: HomeAssistant,
+    mock_setup_entry: MockConfigEntry,
+) -> None:
+    """A device whose identifiers only contain a different domain may be removed."""
+    host = mock_setup_entry.data["host"]
+    port = mock_setup_entry.data["port"]
+    other_device = MagicMock()
+    other_device.identifiers = {("other_domain", f"{host}:{port}")}
+
+    result = await async_remove_config_entry_device(hass, mock_setup_entry, other_device)
+    assert result is True

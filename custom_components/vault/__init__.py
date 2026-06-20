@@ -11,6 +11,7 @@ from homeassistant.const import Platform
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.device_registry import DeviceEntry
 
 from .api import VaultApiClient, VaultApiError, VaultConnectionError, VaultWebSocketClient
 from .api.models import WebSocketEvent
@@ -300,3 +301,20 @@ async def async_unload_entry(hass: HomeAssistant, entry: VaultConfigEntry) -> bo
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         await entry.runtime_data.websocket.async_disconnect()
     return unload_ok
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    config_entry: VaultConfigEntry,
+    device_entry: DeviceEntry,
+) -> bool:
+    """Return True if the device may be removed from the device registry.
+
+    The main Vault device is protected from accidental UI deletion.
+    Orphaned backup-job or storage-target devices that no longer appear in
+    the coordinator data can be removed by the user.
+    """
+    host: str = config_entry.data[CONF_HOST]
+    port: int = config_entry.data.get(CONF_PORT, DEFAULT_PORT)
+    main_identifier = (DOMAIN, f"{host}:{port}")
+    return main_identifier not in device_entry.identifiers
