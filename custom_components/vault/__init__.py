@@ -17,6 +17,7 @@ from .api import VaultApiClient, VaultApiError, VaultConnectionError, VaultWebSo
 from .api.models import WebSocketEvent
 from .const import CONF_API_KEY, CONF_HOST, CONF_PORT, CONF_TLS, DEFAULT_PORT, DOMAIN, LOGGER
 from .coordinator import VaultData, VaultDataUpdateCoordinator
+from .frontend import async_register_frontend
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant, ServiceCall
@@ -232,6 +233,8 @@ async def async_setup(hass: HomeAssistant, config: dict[str, Any]) -> bool:
     hass.services.async_register(DOMAIN, SERVICE_RUN_BACKUP, _handle_run_backup, schema=SCHEMA_RUN_BACKUP)
     hass.services.async_register(DOMAIN, SERVICE_RESTORE, _handle_restore, schema=SCHEMA_RESTORE)
     hass.services.async_register(DOMAIN, SERVICE_TEST_STORAGE, _handle_test_storage, schema=SCHEMA_TEST_STORAGE)
+
+    await async_register_frontend(hass)
 
     return True
 

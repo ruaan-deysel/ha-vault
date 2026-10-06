@@ -21,7 +21,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
-          python-version: "3.13"
+          python-version: "3.14"
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
@@ -35,13 +35,14 @@ jobs:
         with:
           path: |
             .local/ha-venv
-          key: ha-venv-${{ runner.os }}-py313-lint-${{ hashFiles('requirements_dev.txt') }}
+          key: ha-venv-${{ runner.os }}-py314-lint-${{ hashFiles('requirements_dev.txt') }}
           restore-keys: |
-            ha-venv-${{ runner.os }}-py313-lint-
+            ha-venv-${{ runner.os }}-py314-lint-
 
       - name: Install lint dependencies
         run: |
-          if [ ! -d .local/ha-venv ]; then
+          if [ ! -d .local/ha-venv ] || [ ! -x .local/ha-venv/bin/python3 ]; then
+            rm -rf .local/ha-venv
             uv venv .local/ha-venv
           fi
           source .local/ha-venv/bin/activate

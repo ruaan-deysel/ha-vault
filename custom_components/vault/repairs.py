@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.repairs import RepairsFlow
+from homeassistant.components.repairs import RepairsFlow, RepairsFlowResult
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import issue_registry as ir
 
 from .const import DOMAIN
@@ -18,7 +17,7 @@ class VaultRepairFlow(RepairsFlow):
     async def async_step_init(
         self,
         user_input: dict[str, Any] | None = None,
-    ) -> FlowResult:
+    ) -> RepairsFlowResult:
         """Handle the init step — confirm the user wants to apply the fix."""
         if user_input is not None:
             ir.async_delete_issue(self.hass, DOMAIN, self.issue_id)

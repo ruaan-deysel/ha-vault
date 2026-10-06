@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vault Dashboard Cards Browser Fixture</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      :root {
+        --card-background-color: #18181b;
+        --primary-background-color: #09090b;
+        --secondary-background-color: #27272a;
+        --primary-color: #f59e0b;
+        --primary-text-color: #f4f4f5;
+        --secondary-text-color: #a1a1aa;
+        --divider-color: rgba(255, 255, 255, 0.08);
+        --ha-card-background: var(--card-background-color);
+        --ha-card-border-radius: 12px;
+        --ha-card-border-color: rgba(255, 255, 255, 0.08);
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background: #09090b;
+        color: #f4f4f5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .fixture-container {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        max-width: 960px;
+        margin: 0 auto;
+      }
+      .kpi-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+      }
+      .sections-row {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="fixture-container" id="container">
+      <div class="kpi-row">
+        <vault-health-card id="health-card"></vault-health-card>
+        <vault-protected-card id="protected-card"></vault-protected-card>
+        <vault-next-run-card id="next-run-card"></vault-next-run-card>
+        <vault-last-backup-card id="last-backup-card"></vault-last-backup-card>
+      </div>
+
+      <vault-progress-card id="progress-card"></vault-progress-card>
+
+      <div class="sections-row">
+        <vault-jobs-card id="jobs-card"></vault-jobs-card>
+        <vault-activity-card id="activity-card"></vault-activity-card>
+      </div>
+
+      <div class="sections-row">
+        <vault-storage-card id="storage-card"></vault-storage-card>
+        <vault-rules-card id="rules-card"></vault-rules-card>
+      </div>
+
+      <vault-anomalies-card id="anomalies-card"></vault-anomalies-card>
+      <vault-dashboard-card id="dashboard-card"></vault-dashboard-card>
+    </div>
+
+    <script type="module">
+      import "/vault-cards.js";
+
+      const mockHass = {
+        states: {
+          "sensor.vault_backup_status": {
+            entity_id: "sensor.vault_backup_status",
+            state: "ok",
+            attributes: { friendly_name: "Vault Backup Status" },
+          },
+          "sensor.vault_backup_version": {
+            entity_id: "sensor.vault_backup_version",
+            state: "2026.09.01",
+            attributes: { friendly_name: "Vault Backup Version" },
+          },
+          "sensor.vault_backup_mode": {
+            entity_id: "sensor.vault_backup_mode",
+            state: "daemon",
+            attributes: { friendly_name: "Vault Backup Mode" },
+          },
+          "sensor.vault_backup_total_jobs": {
+            entity_id: "sensor.vault_backup_total_jobs",
+            state: "3",
+            attributes: { friendly_name: "Vault Backup Total jobs" },
+          },
+          "sensor.vault_backup_enabled_jobs": {
+            entity_id: "sensor.vault_backup_enabled_jobs",
+            state: "2",
+            attributes: { friendly_name: "Vault Backup Enabled jobs" },
+          },
+          "sensor.vault_backup_open_anomalies": {
+            entity_id: "sensor.vault_backup_open_anomalies",
+            state: "0",
+            attributes: { friendly_name: "Vault Backup Open anomalies", anomalies: [] },
+          },
+          "binary_sensor.vault_backup_online": {
+            entity_id: "binary_sensor.vault_backup_online",
+            state: "on",
+            attributes: { friendly_name: "Vault Backup Online" },
+          },
+          "sensor.vault_backup_runner_queue_length": {
+            entity_id: "sensor.vault_backup_runner_queue_length",
+            state: "0",
+            attributes: { friendly_name: "Vault Backup Runner queue length" },
+          },
+          "sensor.vault_backup_runner_active_job": {
+            entity_id: "sensor.vault_backup_runner_active_job",
+            state: "idle",
+            attributes: { friendly_name: "Vault Backup Runner active job" },
+          },
+          "sensor.vault_backup_daily_containers_backup_status": {
+            entity_id: "sensor.vault_backup_daily_containers_backup_status",
+            state: "completed",
+            attributes: { friendly_name: "Daily Containers Backup Status" },
+          },
+          "sensor.vault_backup_daily_containers_backup_last_run": {
+            entity_id: "sensor.vault_backup_daily_containers_backup_last_run",
+            state: "2026-10-06T02:00:00Z",
+            attributes: { friendly_name: "Daily Containers Backup Last run" },
+          },
+          "sensor.vault_backup_daily_containers_backup_last_size": {
+            entity_id: "sensor.vault_backup_daily_containers_backup_last_size",
+            state: "2600000000",
+            attributes: { friendly_name: "Daily Containers Backup Last size" },
+          },
+          "sensor.vault_backup_daily_containers_backup_last_duration": {
+            entity_id: "sensor.vault_backup_daily_containers_backup_last_duration",
+            state: "205",
+            attributes: { friendly_name: "Daily Containers Backup Last duration" },
+          },
+          "sensor.vault_backup_daily_containers_backup_items_backed_up": {
+            entity_id: "sensor.vault_backup_daily_containers_backup_items_backed_up",
+            state: "9",
+            attributes: { friendly_name: "Daily Containers Backup Items backed up" },
+          },
+          "button.vault_backup_daily_containers_backup_run_now": {
+            entity_id: "button.vault_backup_daily_containers_backup_run_now",
+            state: "unknown",
+            attributes: { friendly_name: "Daily Containers Backup Run now" },
+          },
+          "sensor.vault_backup_home_assistant_backup_status": {
+            entity_id: "sensor.vault_backup_home_assistant_backup_status",
+            state: "completed",
+            attributes: { friendly_name: "Home Assistant Backup Status" },
+          },
+          "sensor.vault_backup_home_assistant_backup_last_run": {
+            entity_id: "sensor.vault_backup_home_assistant_backup_last_run",
+            state: "2026-10-06T02:30:00Z",
+            attributes: { friendly_name: "Home Assistant Backup Last run" },
+          },
+          "sensor.vault_backup_home_assistant_backup_last_size": {
+            entity_id: "sensor.vault_backup_home_assistant_backup_last_size",
+            state: "9200000000",
+            attributes: { friendly_name: "Home Assistant Backup Last size" },
+          },
+          "sensor.vault_backup_home_assistant_backup_last_duration": {
+            entity_id: "sensor.vault_backup_home_assistant_backup_last_duration",
+            state: "88",
+            attributes: { friendly_name: "Home Assistant Backup Last duration" },
+          },
+          "sensor.vault_backup_home_assistant_backup_items_backed_up": {
+            entity_id: "sensor.vault_backup_home_assistant_backup_items_backed_up",
+            state: "1",
+            attributes: { friendly_name: "Home Assistant Backup Items backed up" },
+          },
+          "sensor.vault_backup_storage_backups_total_space": {
+            entity_id: "sensor.vault_backup_storage_backups_total_space",
+            state: "4000000000000",
+            attributes: { friendly_name: "Storage Backups Total space" },
+          },
+          "sensor.vault_backup_storage_backups_used_space": {
+            entity_id: "sensor.vault_backup_storage_backups_used_space",
+            state: "1200000000000",
+            attributes: { friendly_name: "Storage Backups Used space" },
+          },
+          "sensor.vault_backup_storage_backups_free_space": {
+            entity_id: "sensor.vault_backup_storage_backups_free_space",
+            state: "2800000000000",
+            attributes: { friendly_name: "Storage Backups Free space" },
+          },
+          "sensor.vault_backup_storage_backups_type": {
+            entity_id: "sensor.vault_backup_storage_backups_type",
+            state: "local",
+            attributes: { friendly_name: "Storage Backups Type" },
+          },
+          "sensor.vault_backup_storage_backups_health": {
+            entity_id: "sensor.vault_backup_storage_backups_health",
+            state: "ok",
+            attributes: { friendly_name: "Storage Backups Health" },
+          },
+        },
+        devices: {
+          "vault_device": {
+            id: "vault_device",
+            name: "Vault Backup",
+            identifiers: [["vault", "192.168.20.21:24085"]],
+            manufacturer: "Vault",
+            model: "Unraid Backup Daemon",
+            sw_version: "2026.09.01",
+            configuration_url: "http://192.168.20.21:24085",
+          },
+        },
+        callService: (domain, service, data) => {
+          console.log("Mock callService:", domain, service, data);
+          window.lastServiceCall = { domain, service, data };
+          return Promise.resolve();
+        },
+      };
+
+      mockHass.entities = Object.fromEntries(
+        Object.keys(mockHass.states).map((id) => [
+          id,
+          { entity_id: id, device_id: "vault_device", platform: "vault" },
+        ])
+      );
+
+      const cardConfigs = [
+        { id: "health-card", type: "custom:vault-health-card" },
+        { id: "protected-card", type: "custom:vault-protected-card" },
+        { id: "next-run-card", type: "custom:vault-next-run-card" },
+        { id: "last-backup-card", type: "custom:vault-last-backup-card" },
+        { id: "progress-card", type: "custom:vault-progress-card" },
+        { id: "jobs-card", type: "custom:vault-jobs-card" },
+        { id: "activity-card", type: "custom:vault-activity-card" },
+        { id: "storage-card", type: "custom:vault-storage-card" },
+        { id: "rules-card", type: "custom:vault-rules-card" },
+        { id: "anomalies-card", type: "custom:vault-anomalies-card" },
+        { id: "dashboard-card", type: "custom:vault-dashboard-card" },
+      ];
+
+      for (const item of cardConfigs) {
+        const el = document.getElementById(item.id);
+        if (el) {
+          el.setConfig({ type: item.type });
+          el.hass = mockHass;
+        }
+      }
+
+      window.fixtureReady = true;
+    </script>
+  </body>
+</html>
