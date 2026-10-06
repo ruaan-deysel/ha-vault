@@ -41,7 +41,8 @@ jobs:
 
       - name: Install lint dependencies
         run: |
-          if [ ! -d .local/ha-venv ]; then
+          if [ ! -d .local/ha-venv ] || [ ! -x .local/ha-venv/bin/python3 ]; then
+            rm -rf .local/ha-venv
             uv venv .local/ha-venv
           fi
           source .local/ha-venv/bin/activate
