@@ -16,5 +16,5 @@
 
 # Testing utilities for Home Assistant custom components
 # Provides additional fixtures and utilities specifically for custom component testing
-pytest-homeassistant-custom-component==0.13.337
-syrupy==5.2.0
+pytest-homeassistant-custom-component==0.13.367
+syrupy==6.0.0

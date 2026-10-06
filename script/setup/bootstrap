@@ -223,7 +223,7 @@ log_header "Installing Home Assistant ${HA_VERSION} core"
 uv pip install --upgrade "homeassistant==${HA_VERSION}"
 
 # Ensure syrupy matches the version required by pytest-homeassistant-custom-component
-uv pip install "syrupy==5.2.0"
+uv pip install "syrupy==6.0.0"
 
 set +e
 rm -rf /tmp/requirements*.txt /tmp/homeassistant/ || log_warning "Failed to clean up temporary files"
