@@ -7,6 +7,7 @@ import {
   mdiHarddisk,
 } from "./icons";
 import { registerDashboardCard } from "./register-dashboard-card";
+import type { HassEntity } from "./ha-types";
 
 interface StorageItem {
   id: string;
