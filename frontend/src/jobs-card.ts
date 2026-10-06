@@ -200,7 +200,7 @@ export class VaultJobsCard extends BaseVaultCard {
                               title="Restore"
                               @click="${() => {
                                 const url = this.getActiveDevice()?.configuration_url;
-                                if (url) window.open(url, "_blank");
+                                if (url) window.open(url, "_blank", "noopener,noreferrer");
                               }}"
                             >
                               ${iconTemplate(mdiRestart, 14)}

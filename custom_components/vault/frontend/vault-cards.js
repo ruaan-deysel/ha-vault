@@ -826,7 +826,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
                             <button
                               class="btn"
                               title="Restore"
-                              @click="${()=>{let e=this.getActiveDevice()?.configuration_url;e&&window.open(e,`_blank`)}}"
+                              @click="${()=>{let e=this.getActiveDevice()?.configuration_url;e&&window.open(e,`_blank`,`noopener,noreferrer`)}}"
                             >
                               ${Q(Ze,14)}
                               Restore
