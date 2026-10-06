@@ -6,6 +6,8 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ## [Unreleased]
 
+## [2026.10.0] - 2026-10-07
+
 ### Added
 
 - **Modular Lovelace Dashboard Cards** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Complete set of 11 customizable Lit 3 custom elements for Home Assistant dashboards matching the native Vault plugin UI:
