@@ -947,7 +947,7 @@ Use slugified job names for entity IDs:
 
 ```python
 # "Daily Docker Backup" → "daily_docker_backup"
-slug = re.sub(r'[^a-z0-9]+', '_', job_name.lower()).strip('_')
+slug = re.sub(r"[^a-z0-9]+", "_", job_name.lower()).strip("_")
 entity_id = f"sensor.vault_{slug}_status"
 ```
 
@@ -956,18 +956,19 @@ entity_id = f"sensor.vault_{slug}_status"
 ```python
 @dataclass
 class VaultData:
-    health: dict           # /health response
-    jobs: list[dict]       # /jobs response
-    job_runs: dict[int, list[dict]]   # job_id → recent runs
-    storage: list[dict]    # /storage response
-    encryption: dict       # /settings/encryption response
-    activity: list[dict]   # /activity response
+    health: dict  # /health response
+    jobs: list[dict]  # /jobs response
+    job_runs: dict[int, list[dict]]  # job_id → recent runs
+    storage: list[dict]  # /storage response
+    encryption: dict  # /settings/encryption response
+    activity: list[dict]  # /activity response
 ```
 
 ### WebSocket Integration
 
 ```python
 import aiohttp
+
 
 async def websocket_listener(hass, host, port, api_key=None, use_tls=False):
     scheme = "wss" if use_tls else "ws"

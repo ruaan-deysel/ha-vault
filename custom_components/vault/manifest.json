@@ -1,6 +1,11 @@
 {
   "domain": "vault",
   "name": "Vault",
+  "after_dependencies": [
+    "frontend",
+    "http",
+    "lovelace"
+  ],
   "codeowners": [
     "@ruaan-deysel"
   ],
@@ -9,6 +14,7 @@
   "integration_type": "service",
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/ruaan-deysel/ha-vault/issues",
+  "quality_scale": "gold",
   "requirements": [
     "pydantic>=2.0"
   ],
