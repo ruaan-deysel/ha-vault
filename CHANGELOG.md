@@ -6,6 +6,15 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ## [Unreleased]
 
+## [2026.10.1] - 2026-10-07
+
+### Fixed
+
+- **Storage Destinations Capacity & Display**: Resolved issue where Storage card and unified dashboard card showed no destinations when storage entities were reported in units such as TB or when total space sensors were not registered. Storage sensors now also expose raw byte capacities (`free_bytes`, `used_bytes`, `total_bytes`) as attributes for instant fallback, and `storage-card` gracefully discovers all storage targets.
+- **Protected Items Coverage**: Fixed Protected card and unified dashboard card displaying `0 / 0` when `jobs_total` / `jobs_enabled` entities were not enabled in Home Assistant's entity registry. The card now calculates protected items from `items_backed_up` and dynamically discovers configured jobs from active status entities.
+- **Data Size & Duration Formatting**: Added unit-aware parsing for TB/GB/MB/KB states in `dashboard-cards-base`, prevented 40 TB from formatting as 41 B, supported string duration representations (e.g. `1m 37s`), and added fallback to event entity attributes (`size_bytes`).
+- **Next Run & Activity Feeds**: Enabled automatic job status fallback when job count sensors are disabled, and humanized future run hours and minutes cleanly.
+
 ## [2026.10.0] - 2026-10-07
 
 ### Added

@@ -16,8 +16,11 @@ export class VaultNextRunCard extends BaseVaultCard {
     const enabledJobsEnt = this.getEntity("enabled_jobs") || this.getEntity("jobs_enabled");
     const runnerJobEnt = this.getEntity("runner_active_job") || this.getEntity("runner_current_job_id");
 
-    const totalJobs = Number(totalJobsEnt?.state ?? 0);
-    const enabledJobs = Number(enabledJobsEnt?.state ?? 0);
+    const statusEntities = this.getEntities("status").filter(
+      (e) => !e.entity_id.includes("vault_status") && !e.entity_id.includes("storage_")
+    );
+    const totalJobs = Number(totalJobsEnt?.state ?? (statusEntities.length || 0));
+    const enabledJobs = Number(enabledJobsEnt?.state ?? totalJobs);
 
     const activeJob = runnerJobEnt?.state && runnerJobEnt.state !== "idle" ? runnerJobEnt.state : null;
 
@@ -45,6 +48,11 @@ export class VaultNextRunCard extends BaseVaultCard {
       if (match) {
         nextJobName = match.replace(/last run/i, "").replace(/vault backup/i, "").trim() || "";
       }
+    }
+
+    if (!nextJobName && statusEntities.length > 0 && statusEntities[0]) {
+      const match = statusEntities[0].attributes?.friendly_name as string | undefined;
+      nextJobName = match?.replace(/status/i, "").replace(/vault backup/i, "").trim() || "";
     }
 
     if (!nextJobName) {

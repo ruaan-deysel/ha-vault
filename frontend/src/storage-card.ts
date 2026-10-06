@@ -31,44 +31,69 @@ export class VaultStorageCard extends BaseVaultCard {
   }
 
   private getStorage(): StorageItem[] {
-    const totalEntities = this.getEntities("total_space");
-    const usedEntities = this.getEntities("used_space");
-    const freeEntities = this.getEntities("free_space");
-    const typeEntities = this.getEntities("type");
-    const healthEntities = this.getEntities("health");
+    if (!this.hass?.states) return [];
 
     const storageMap = new Map<string, StorageItem>();
+    const storageEntities: HassEntity[] = [];
 
-    for (const ent of totalEntities) {
-      const match = ent.entity_id.match(/storage_(.*?)_total_space/);
-      const token = match && match[1] ? match[1] : "default";
+    for (const [entityId, entity] of Object.entries(this.hass.states)) {
+      if (entityId.startsWith("sensor.") && entityId.includes("storage_")) {
+        storageEntities.push(entity);
+      }
+    }
 
-      const typeEnt = typeEntities.find((t) => t.entity_id.includes(`storage_${token}_type`));
-      const healthEnt = healthEntities.find((h) => h.entity_id.includes(`storage_${token}_health`));
-      const usedEnt = usedEntities.find((u) => u.entity_id.includes(`storage_${token}_used_space`));
-      const freeEnt = freeEntities.find((f) => f.entity_id.includes(`storage_${token}_free_space`));
+    const tokens = new Set<string>();
+    for (const ent of storageEntities) {
+      const match = ent.entity_id.match(/storage_([a-z0-9_]+?)_(?:name|type|health|free_space|used_space|total_space)$/);
+      if (match && match[1]) {
+        tokens.add(match[1]);
+      }
+    }
 
-      const totalVal = Number(ent.state || 0);
-      const usedVal = Number(usedEnt?.state || 0);
-      const freeVal = Number(freeEnt?.state || 0);
+    for (const token of tokens) {
+      const nameEnt = storageEntities.find((e) => e.entity_id.endsWith(`storage_${token}_name`));
+      const typeEnt = storageEntities.find((e) => e.entity_id.endsWith(`storage_${token}_type`));
+      const healthEnt = storageEntities.find((e) => e.entity_id.endsWith(`storage_${token}_health`));
+      const freeEnt = storageEntities.find((e) => e.entity_id.endsWith(`storage_${token}_free_space`));
+      const usedEnt = storageEntities.find((e) => e.entity_id.endsWith(`storage_${token}_used_space`));
+      const totalEnt = storageEntities.find((e) => e.entity_id.endsWith(`storage_${token}_total_space`));
 
-      const rawName = (ent.attributes?.friendly_name as string | undefined) || token;
-      const cleanName = rawName
-        .replace(/total space/i, "")
-        .replace(/storage/i, "")
-        .replace(/vault backup/i, "")
-        .trim();
+      const freeBytes = this.parseDataSizeBytes(freeEnt?.state, freeEnt?.attributes?.unit_of_measurement as string | undefined);
+      const usedBytes =
+        this.parseDataSizeBytes(usedEnt?.state, usedEnt?.attributes?.unit_of_measurement as string | undefined) ||
+        Number(freeEnt?.attributes?.used_bytes || 0);
+      const totalBytes =
+        this.parseDataSizeBytes(totalEnt?.state, totalEnt?.attributes?.unit_of_measurement as string | undefined) ||
+        Number(freeEnt?.attributes?.total_bytes || 0);
 
-      const pct = totalVal > 0 ? Math.min(100, Math.round((usedVal / totalVal) * 100)) : 0;
+      let cleanName = nameEnt?.state;
+      if (!cleanName || cleanName === "unavailable" || cleanName === "unknown") {
+        const rawName = (freeEnt?.attributes?.friendly_name || token) as string;
+        cleanName = rawName
+          .replace(/free space/i, "")
+          .replace(/total space/i, "")
+          .replace(/used space/i, "")
+          .replace(/storage/i, "")
+          .replace(/vault backup/i, "")
+          .trim() || token;
+      }
+
+      let pct = 0;
+      if (totalBytes > 0 && usedBytes > 0) {
+        pct = Math.min(100, Math.round((usedBytes / totalBytes) * 100));
+      } else if (totalBytes > 0 && freeBytes > 0) {
+        const calcUsed = Math.max(0, totalBytes - freeBytes);
+        pct = Math.min(100, Math.round((calcUsed / totalBytes) * 100));
+      }
 
       storageMap.set(token, {
         id: token,
-        name: cleanName || token,
-        type: (typeEnt?.state || "local").toUpperCase(),
-        health: healthEnt?.state || "ok",
-        usedBytes: usedVal,
-        freeBytes: freeVal,
-        totalBytes: totalVal,
+        name: cleanName,
+        type: (typeEnt?.state && typeEnt.state !== "unavailable" ? typeEnt.state : "local").toUpperCase(),
+        health: (healthEnt?.state && healthEnt.state !== "unavailable" ? healthEnt.state : "ok"),
+        usedBytes,
+        freeBytes,
+        totalBytes,
         usagePct: pct,
       });
     }
@@ -118,18 +143,35 @@ export class VaultStorageCard extends BaseVaultCard {
                         </span>
                       </div>
 
-                      <div class="progress-bar" style="margin: 6px 0;">
-                        <div
-                          class="progress-fill ${isHighUsage ? "error" : s.usagePct > 80 ? "warning" : ""}"
-                          style="width: ${s.usagePct}%;"
-                        ></div>
-                      </div>
+                      ${s.totalBytes > 0
+                        ? html`
+                            <div class="progress-bar" style="margin: 6px 0;">
+                              <div
+                                class="progress-fill ${isHighUsage ? "error" : s.usagePct > 80 ? "warning" : ""}"
+                                style="width: ${s.usagePct}%;"
+                              ></div>
+                            </div>
 
-                      <div class="card-row-meta">
-                        <span>${this.formatBytes(s.freeBytes)} free</span>
-                        <span>·</span>
-                        <span>${this.formatBytes(s.usedBytes)} of ${this.formatBytes(s.totalBytes)} (${s.usagePct}%)</span>
-                      </div>
+                            <div class="card-row-meta">
+                              <span>${this.formatBytes(s.freeBytes)} free</span>
+                              <span>·</span>
+                              <span>${this.formatBytes(s.usedBytes)} of ${this.formatBytes(s.totalBytes)} (${s.usagePct}%)</span>
+                            </div>
+                          `
+                        : html`
+                            <div class="progress-bar" style="margin: 6px 0;">
+                              <div
+                                class="progress-fill"
+                                style="width: 100%;"
+                              ></div>
+                            </div>
+
+                            <div class="card-row-meta">
+                              <span>${this.formatBytes(s.freeBytes)} free</span>
+                              <span>·</span>
+                              <span>Destination active</span>
+                            </div>
+                          `}
                     </div>
                   </div>
                 `;

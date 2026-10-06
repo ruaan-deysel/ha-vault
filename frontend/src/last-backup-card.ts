@@ -50,11 +50,19 @@ export class VaultLastBackupCard extends BaseVaultCard {
           s.entity_id.endsWith(`_${matchingJobToken}_size`) ||
           s.entity_id.includes(`_${matchingJobToken}_last_size`)
       );
-      if (sizeEnt?.state && sizeEnt.state !== "unavailable" && sizeEnt.state !== "unknown") {
-        const val = Number(sizeEnt.state);
-        if (!isNaN(val) && val > 0) {
-          formattedSize = this.formatBytes(val);
-        }
+      const eventEnt = this.getEntities("last_event", "event").find((e) =>
+        e.entity_id.includes(matchingJobToken)
+      );
+
+      let sizeBytes = this.parseDataSizeBytes(
+        sizeEnt?.state,
+        sizeEnt?.attributes?.unit_of_measurement as string | undefined
+      );
+      if (!sizeBytes && eventEnt?.attributes?.size_bytes) {
+        sizeBytes = Number(eventEnt.attributes.size_bytes);
+      }
+      if (sizeBytes > 0) {
+        formattedSize = this.formatBytes(sizeBytes);
       }
 
       const durEnt = lastDurSensors.find(
@@ -64,10 +72,7 @@ export class VaultLastBackupCard extends BaseVaultCard {
           d.entity_id.includes(`_${matchingJobToken}_last_duration`)
       );
       if (durEnt?.state && durEnt.state !== "unavailable" && durEnt.state !== "unknown") {
-        const val = Number(durEnt.state);
-        if (!isNaN(val) && val > 0) {
-          formattedDuration = this.formatDuration(val);
-        }
+        formattedDuration = this.formatDuration(durEnt.state);
       }
 
       const statusEnt = statusSensors.find(

@@ -66,9 +66,20 @@ export class VaultActivityCard extends BaseVaultCard {
           i.entity_id.includes(`_${jobToken}_items_backed_up`)
       );
 
-      const sizeVal = Number(sizeEnt?.state || 0);
-      const durVal = Number(durEnt?.state || 0);
-      const itemsVal = Number(itemsEnt?.state || 0);
+      const eventEnt = this.getEntities("last_event", "event").find((e) =>
+        e.entity_id.includes(jobToken)
+      );
+
+      let sizeBytes = this.parseDataSizeBytes(
+        sizeEnt?.state,
+        sizeEnt?.attributes?.unit_of_measurement as string | undefined
+      );
+      if (!sizeBytes && eventEnt?.attributes?.size_bytes) {
+        sizeBytes = Number(eventEnt.attributes.size_bytes);
+      }
+
+      const durStr = this.formatDuration(durEnt?.state);
+      const itemsVal = Number(itemsEnt?.state || eventEnt?.attributes?.items_done || 0);
 
       // Date formatting
       let timeFormatted = runEnt.state;
@@ -88,7 +99,11 @@ export class VaultActivityCard extends BaseVaultCard {
 
       // Item tags extracted from real entity attributes
       let realItems: string[] = [];
-      const rawItems = runEnt.attributes?.items || runEnt.attributes?.item_names || itemsEnt?.attributes?.items || itemsEnt?.attributes?.item_names;
+      const rawItems =
+        runEnt.attributes?.items ||
+        runEnt.attributes?.item_names ||
+        itemsEnt?.attributes?.items ||
+        itemsEnt?.attributes?.item_names;
       if (Array.isArray(rawItems)) {
         realItems = rawItems.map((item) => String(item).trim()).filter(Boolean);
       }
@@ -98,6 +113,7 @@ export class VaultActivityCard extends BaseVaultCard {
         runEnt.attributes?.status ||
         runEnt.attributes?.last_status ||
         itemsEnt?.attributes?.status ||
+        eventEnt?.attributes?.status ||
         "completed"
       ).toLowerCase();
 
@@ -106,8 +122,8 @@ export class VaultActivityCard extends BaseVaultCard {
         jobName: cleanName,
         status: runStatus,
         timeStr: timeFormatted,
-        durationStr: this.formatDuration(durVal),
-        sizeStr: this.formatBytes(sizeVal),
+        durationStr: durStr,
+        sizeStr: this.formatBytes(sizeBytes),
         itemsStr: itemsVal > 0 ? `${itemsVal} items` : "--",
         itemsList: realItems,
       });

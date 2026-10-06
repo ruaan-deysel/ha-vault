@@ -161,8 +161,12 @@ export abstract class BaseVaultCard extends LitElement {
       if (!entityId.startsWith(`${domain}.`)) continue;
       if (this.hass.entities) {
         const reg = this.hass.entities[entityId];
-        if (!reg || reg.platform !== "vault") continue;
-        if (deviceId && reg.device_id && reg.device_id !== deviceId) continue;
+        if (reg) {
+          if (reg.platform && reg.platform !== "vault") continue;
+          if (deviceId && reg.device_id && reg.device_id !== deviceId) continue;
+        } else if (!entityId.startsWith(`${domain}.vault_`) && !entityId.includes("vault")) {
+          continue;
+        }
       } else if (!entityId.startsWith(`${domain}.vault_`) && !entityId.includes("vault")) {
         continue;
       }
@@ -180,19 +184,45 @@ export abstract class BaseVaultCard extends LitElement {
     return results;
   }
 
+  /** Convert data size entity state into bytes, taking unit_of_measurement into account */
+  protected parseDataSizeBytes(state: string | number | undefined | null, unit?: string): number {
+    if (state === undefined || state === null || state === "unavailable" || state === "unknown") return 0;
+    const n = Number(state);
+    if (isNaN(n) || n <= 0) return 0;
+    const u = (unit || "").toUpperCase();
+    if (u === "TB") return n * 1e12;
+    if (u === "GB") return n * 1e9;
+    if (u === "MB") return n * 1e6;
+    if (u === "KB") return n * 1e3;
+    return n;
+  }
+
   /** Format bytes to human readable string (MB/GB/TB) */
-  protected formatBytes(bytes: number | string | undefined | null): string {
+  protected formatBytes(bytes: number | string | undefined | null, unit?: string): string {
+    if (bytes === undefined || bytes === null || bytes === "" || bytes === "unavailable" || bytes === "unknown") return "--";
     const n = Number(bytes);
     if (isNaN(n) || n <= 0) return "--";
+
+    if (unit && unit !== "B" && unit !== "bytes") {
+      const u = unit.toUpperCase();
+      if (["TB", "GB", "MB", "KB"].includes(u)) {
+        return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${u}`;
+      }
+    }
+
     if (n >= 1e12) return `${(n / 1e12).toFixed(1)} TB`;
     if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`;
     if (n >= 1e6) return `${(n / 1e6).toFixed(1)} MB`;
     if (n >= 1e3) return `${(n / 1e3).toFixed(1)} KB`;
-    return `${n} B`;
+    return `${Math.round(n)} B`;
   }
 
   /** Format duration in seconds to human readable string */
   protected formatDuration(seconds: number | string | undefined | null): string {
+    if (seconds === undefined || seconds === null || seconds === "" || seconds === "unavailable" || seconds === "unknown") return "--";
+    if (typeof seconds === "string" && /[a-z]/i.test(seconds)) {
+      return seconds;
+    }
     const s = Number(seconds);
     if (isNaN(s) || s < 0) return "--";
     if (s < 60) return `${Math.round(s)}s`;
@@ -221,7 +251,11 @@ export abstract class BaseVaultCard extends LitElement {
       }
       if (absDiffSec < 86400) {
         const h = Math.floor(absDiffSec / 3600);
-        return isFuture ? `in ${h}h` : `${h}h ago`;
+        const m = Math.floor((absDiffSec % 3600) / 60);
+        if (isFuture) {
+          return m > 0 ? `in ${h}h ${m}m` : `in ${h}h`;
+        }
+        return m > 0 ? `${h}h ${m}m ago` : `${h}h ago`;
       }
       const d = Math.floor(absDiffSec / 86400);
       return isFuture ? `in ${d}d` : `${d}d ago`;

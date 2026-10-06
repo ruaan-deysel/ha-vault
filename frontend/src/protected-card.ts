@@ -14,12 +14,42 @@ export class VaultProtectedCard extends BaseVaultCard {
   protected override render(): TemplateResult {
     const totalJobsEnt = this.getEntity("total_jobs") || this.getEntity("jobs_total");
     const enabledJobsEnt = this.getEntity("enabled_jobs") || this.getEntity("jobs_enabled");
+    const statusEntities = this.getEntities("status").filter(
+      (e) => !e.entity_id.includes("vault_status") && !e.entity_id.includes("storage_")
+    );
 
-    const totalJobs = Number(totalJobsEnt?.state ?? 0);
-    const enabledJobs = Number(enabledJobsEnt?.state ?? totalJobs);
+    const rawTotal = Number(totalJobsEnt?.state ?? 0);
+    const rawEnabled = Number(enabledJobsEnt?.state ?? 0);
 
-    const pct = totalJobs > 0 ? Math.round((enabledJobs / totalJobs) * 100) : 100;
-    const isAllCovered = enabledJobs >= totalJobs && totalJobs > 0;
+    const itemsBackedUpEntities = this.getEntities("items_backed_up");
+    const itemsFailedEntities = this.getEntities("items_failed");
+    let itemsProtected = 0;
+    let itemsFailed = 0;
+    for (const ent of itemsBackedUpEntities) {
+      const val = Number(ent.state);
+      if (!isNaN(val) && val > 0) itemsProtected += val;
+    }
+    for (const ent of itemsFailedEntities) {
+      const val = Number(ent.state);
+      if (!isNaN(val) && val > 0) itemsFailed += val;
+    }
+
+    let coveredCount = 0;
+    let totalCount = 0;
+
+    if (rawTotal > 0) {
+      totalCount = rawTotal;
+      coveredCount = rawEnabled > 0 ? rawEnabled : rawTotal;
+    } else if (itemsProtected > 0 || itemsFailed > 0) {
+      coveredCount = itemsProtected;
+      totalCount = itemsProtected + itemsFailed;
+    } else if (statusEntities.length > 0) {
+      totalCount = statusEntities.length;
+      coveredCount = statusEntities.filter((s) => s.state !== "disabled").length || totalCount;
+    }
+
+    const pct = totalCount > 0 ? Math.min(100, Math.round((coveredCount / totalCount) * 100)) : 100;
+    const isAllCovered = totalCount > 0 && coveredCount >= totalCount && itemsFailed === 0;
 
     return html`
       <ha-card>
@@ -37,8 +67,8 @@ export class VaultProtectedCard extends BaseVaultCard {
 
         <div class="kpi-main" style="padding-top: 4px;">
           <div class="kpi-value-row">
-            <span class="kpi-value">${enabledJobs}</span>
-            <span class="kpi-unit">/${totalJobs || enabledJobs}</span>
+            <span class="kpi-value">${coveredCount}</span>
+            <span class="kpi-unit">/${totalCount || coveredCount}</span>
           </div>
 
           <div class="progress-bar" style="margin: 8px 0 6px 0;">
@@ -49,7 +79,11 @@ export class VaultProtectedCard extends BaseVaultCard {
           </div>
 
           <span class="kpi-sub">
-            ${isAllCovered ? "All items covered" : `${enabledJobs} of ${totalJobs} jobs active`}
+            ${isAllCovered
+              ? "All items covered"
+              : itemsFailed > 0
+              ? `${itemsFailed} failed item${itemsFailed === 1 ? "" : "s"}`
+              : `${coveredCount} of ${totalCount} jobs active`}
           </span>
         </div>
       </ha-card>

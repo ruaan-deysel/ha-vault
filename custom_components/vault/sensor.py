@@ -320,7 +320,6 @@ def _job_sensor_descriptions() -> tuple[VaultJobSensorEntityDescription, ...]:
             suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
             suggested_display_precision=2,
             entity_category=EntityCategory.DIAGNOSTIC,
-            entity_registry_enabled_default=False,
             value_fn=_job_last_size,
         ),
         VaultJobSensorEntityDescription(
@@ -347,7 +346,6 @@ def _job_sensor_descriptions() -> tuple[VaultJobSensorEntityDescription, ...]:
             translation_key="job_restore_points",
             native_unit_of_measurement="points",
             entity_category=EntityCategory.DIAGNOSTIC,
-            entity_registry_enabled_default=False,
             value_fn=_job_restore_points,
         ),
         VaultJobSensorEntityDescription(
@@ -365,11 +363,24 @@ def _job_sensor_descriptions() -> tuple[VaultJobSensorEntityDescription, ...]:
 # ---------------------------------------------------------------------------
 
 
+def _storage_capacity_attributes(storage: StorageDestination) -> dict[str, Any] | None:
+    """Return capacity breakdown attributes for storage destinations."""
+    cap = storage.capacity
+    if cap is None:
+        return None
+    return {
+        "free_bytes": cap.free_bytes,
+        "used_bytes": cap.used_bytes,
+        "total_bytes": cap.total_bytes,
+    }
+
+
 @dataclass(frozen=True, kw_only=True)
 class VaultStorageSensorEntityDescription(SensorEntityDescription):
     """Describes a per-storage Vault sensor entity."""
 
     value_fn: Callable[[StorageDestination], Any]
+    attributes_fn: Callable[[StorageDestination], dict[str, Any] | None] | None = None
 
 
 _STORAGE_SENSOR_LABELS: dict[str, str] = {
@@ -408,6 +419,7 @@ STORAGE_SENSOR_DESCRIPTIONS: tuple[VaultStorageSensorEntityDescription, ...] = (
         suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
         suggested_display_precision=1,
         value_fn=lambda s: _storage_capacity_value(s, "free_bytes"),
+        attributes_fn=_storage_capacity_attributes,
     ),
     VaultStorageSensorEntityDescription(
         key="used_space",
@@ -417,8 +429,8 @@ STORAGE_SENSOR_DESCRIPTIONS: tuple[VaultStorageSensorEntityDescription, ...] = (
         suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
         suggested_display_precision=1,
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
         value_fn=lambda s: _storage_capacity_value(s, "used_bytes"),
+        attributes_fn=_storage_capacity_attributes,
     ),
     VaultStorageSensorEntityDescription(
         key="total_space",
@@ -428,8 +440,8 @@ STORAGE_SENSOR_DESCRIPTIONS: tuple[VaultStorageSensorEntityDescription, ...] = (
         suggested_unit_of_measurement=UnitOfInformation.GIGABYTES,
         suggested_display_precision=1,
         entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
         value_fn=lambda s: _storage_capacity_value(s, "total_bytes"),
+        attributes_fn=_storage_capacity_attributes,
     ),
 )
 
@@ -672,3 +684,11 @@ class VaultStorageSensor(SensorEntity, VaultEntity):
         """Return the sensor value for this storage destination."""
         storage = self._current_storage()
         return self.entity_description.value_fn(storage) if storage is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        """Return extra attributes for this storage sensor, if any."""
+        if self.entity_description.attributes_fn is None:
+            return None
+        storage = self._current_storage()
+        return self.entity_description.attributes_fn(storage) if storage is not None else None
