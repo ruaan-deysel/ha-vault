@@ -24,11 +24,12 @@ export class VaultProgressCard extends BaseVaultCard {
       runningSensors.some((s) => s.state === "on") ||
       (activeRunnerEnt?.state && activeRunnerEnt.state !== "idle");
 
+    const runningSensor = runningSensors.find((s) => s.state === "on");
+    const activeFriendlyName = runningSensor?.attributes?.friendly_name as string | undefined;
     const activeJobName =
       activeRunnerEnt?.state && activeRunnerEnt.state !== "idle"
         ? activeRunnerEnt.state
-        : runningSensors.find((s) => s.state === "on")?.attributes?.friendly_name?.toString().replace(/running/i, "").trim() ||
-          "Backup job";
+        : activeFriendlyName?.replace(/running/i, "").trim() || "Backup job";
 
     // Progress percentage
     const progressSensors = this.getEntities("progress");

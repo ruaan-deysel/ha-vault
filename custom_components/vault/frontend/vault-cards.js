@@ -670,7 +670,7 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
           </span>
         </div>
       </ha-card>
-    `}},editor:class extends Y{},name:`Vault Last Backup`,description:`Display latest backup completion status, size, and duration`}),$({tag:Oe,editorTag:ke,card:class extends J{static editorTag=ke;getGridOptions(){return{columns:6,rows:3,min_columns:3,min_rows:2}}render(){let e=this.getEntities(`running`,`binary_sensor`),t=this.getEntity(`runner_active_job`)||this.getEntity(`runner_current_job_id`),n=e.some(e=>e.state===`on`)||t?.state&&t.state!==`idle`,r=t?.state&&t.state!==`idle`?t.state:e.find(e=>e.state===`on`)?.attributes?.friendly_name?.toString().replace(/running/i,``).trim()||`Backup job`,i=this.getEntities(`progress`),a=0;for(let e of i){let t=Number(e.state);if(!isNaN(t)&&t>0){a=t;break}}return I`
+    `}},editor:class extends Y{},name:`Vault Last Backup`,description:`Display latest backup completion status, size, and duration`}),$({tag:Oe,editorTag:ke,card:class extends J{static editorTag=ke;getGridOptions(){return{columns:6,rows:3,min_columns:3,min_rows:2}}render(){let e=this.getEntities(`running`,`binary_sensor`),t=this.getEntity(`runner_active_job`)||this.getEntity(`runner_current_job_id`),n=e.some(e=>e.state===`on`)||t?.state&&t.state!==`idle`,r=e.find(e=>e.state===`on`)?.attributes?.friendly_name,i=t?.state&&t.state!==`idle`?t.state:r?.replace(/running/i,``).trim()||`Backup job`,a=this.getEntities(`progress`),o=0;for(let e of a){let t=Number(e.state);if(!isNaN(t)&&t>0){o=t;break}}return I`
       <ha-card>
         <div class="header">
           <div class="header-main">
@@ -694,13 +694,13 @@ var e=globalThis,t=e.ShadowRoot&&(e.ShadyCSS===void 0||e.ShadyCSS.nativeShadow)&
               <div class="card-row" style="margin-top: 4px;">
                 <div class="card-row-main">
                   <div class="card-row-title-bar">
-                    <span class="card-row-title">${r}</span>
-                    <span class="badge running">${a}%</span>
+                    <span class="card-row-title">${i}</span>
+                    <span class="badge running">${o}%</span>
                   </div>
                   <div class="progress-bar" style="margin: 6px 0;">
                     <div
                       class="progress-fill running"
-                      style="width: ${Math.max(5,a)}%;"
+                      style="width: ${Math.max(5,o)}%;"
                     ></div>
                   </div>
                   <div class="card-row-meta">

@@ -15,7 +15,9 @@ async def test_device_info(
 ) -> None:
     """Test that entities create a device with correct info."""
     device_registry = dr.async_get(hass)
-    device = device_registry.async_get_device_by_identifier((DOMAIN, "192.168.1.100:24085"), mock_setup_entry.entry_id)
+    device = device_registry.async_get_device_by_identifier(
+        (DOMAIN, "192.168.1.100:24085"), config_entry_id=mock_setup_entry.entry_id
+    )
     assert device is not None
     assert device.name == "Vault Backup"
     assert device.manufacturer == "Vault"
