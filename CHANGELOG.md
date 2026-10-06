@@ -6,6 +6,31 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ## [Unreleased]
 
+### Added
+
+- **Modular Lovelace Dashboard Cards** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Complete set of 11 customizable Lit 3 custom elements for Home Assistant dashboards matching the native Vault plugin UI:
+  - `custom:vault-health-card`: Radial health score ring with gradient meter and status badges.
+  - `custom:vault-protected-card`: Protected Docker containers / VMs count with coverage progress bar.
+  - `custom:vault-next-run-card`: Scheduled backup countdown and previous run summary.
+  - `custom:vault-last-backup-card`: Last backup status badge, byte size, duration, and humanized timestamp.
+  - `custom:vault-progress-card`: Active runner job tracking with percent bar, step indicator, and idle state.
+  - `custom:vault-rules-card`: Interactive 3-2-1 backup rule compliance checklist (3 copies, 2 media, 1 offsite).
+  - `custom:vault-jobs-card`: Backup job cards with one-click "Run Now" service triggers and direct "Restore" deep links to Unraid.
+  - `custom:vault-activity-card`: Recent backup activity feed with item check chips, durations, and sizes.
+  - `custom:vault-storage-card`: Storage destination cards with capacity progress bars and health badges.
+  - `custom:vault-anomalies-card`: Anomaly detection alert box with severity icons and resolution badges.
+  - `custom:vault-dashboard-card`: Master unified card combining all tiles into a responsive layout matching the Vault plugin UI.
+- **Dynamic Frontend Card Resource Serving** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Added `frontend.py` serving the card bundle via Home Assistant's static HTTP path config, automatically registering module resources in Lovelace storage collections with cache-busting SHA-256 digests.
+- **Playwright Browser Regression Suite** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Added 12 end-to-end browser tests verifying element registration, template rendering, and button service triggers.
+- **CI Test Workflow** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Added `.github/workflows/test.yml` covering backend validation, unit tests, Playwright browser tests, artifact trace uploads, and frontend bundle synchronization checks.
+
+### Changed
+
+- **Modernized to Home Assistant 2026+ and Gold Quality Scale** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Manifest keys sorted alphabetically, quality scale set to `gold`, and `after_dependencies` declared for frontend and Lovelace integration lifecycle.
+- **Updated Device Registry Lookups** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Migrated deprecated `device_registry.async_get_device` references in test fixtures to `device_registry.async_get_device_by_identifier`.
+- **Refined Repairs Flow Typing** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Updated `RepairsFlowResult` return types in `repairs.py` for modern Home Assistant typing conventions.
+
+
 ## [2026.06.06] - 2026-06-20
 
 ### Added
