@@ -19,7 +19,7 @@ The changelog uses date sections in `YYYY.MM.DD` format.
 
 ### Added
 
-- **Modular Lovelace Dashboard Cards** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Complete set of 11 customizable Lit 3 custom elements for Home Assistant dashboards matching the native Vault plugin UI:
+- **Modular Lovelace Dashboard Cards** ([#63](https://github.com/tinkerologie/ha-vault/pull/63)): Complete set of 11 customizable Lit 3 custom elements for Home Assistant dashboards matching the native Vault plugin UI:
   - `custom:vault-health-card`: Radial health score ring with gradient meter and status badges.
   - `custom:vault-protected-card`: Protected Docker containers / VMs count with coverage progress bar.
   - `custom:vault-next-run-card`: Scheduled backup countdown and previous run summary.
@@ -31,50 +31,50 @@ The changelog uses date sections in `YYYY.MM.DD` format.
   - `custom:vault-storage-card`: Storage destination cards with capacity progress bars and health badges.
   - `custom:vault-anomalies-card`: Anomaly detection alert box with severity icons and resolution badges.
   - `custom:vault-dashboard-card`: Master unified card combining all tiles into a responsive layout matching the Vault plugin UI.
-- **Dynamic Frontend Card Resource Serving** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Added `frontend.py` serving the card bundle via Home Assistant's static HTTP path config, automatically registering module resources in Lovelace storage collections with cache-busting SHA-256 digests.
-- **Playwright Browser Regression Suite** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Added 12 end-to-end browser tests verifying element registration, template rendering, and button service triggers.
-- **CI Test Workflow** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Added `.github/workflows/test.yml` covering backend validation, unit tests, Playwright browser tests, artifact trace uploads, and frontend bundle synchronization checks.
+- **Dynamic Frontend Card Resource Serving** ([#63](https://github.com/tinkerologie/ha-vault/pull/63)): Added `frontend.py` serving the card bundle via Home Assistant's static HTTP path config, automatically registering module resources in Lovelace storage collections with cache-busting SHA-256 digests.
+- **Playwright Browser Regression Suite** ([#63](https://github.com/tinkerologie/ha-vault/pull/63)): Added 12 end-to-end browser tests verifying element registration, template rendering, and button service triggers.
+- **CI Test Workflow** ([#63](https://github.com/tinkerologie/ha-vault/pull/63)): Added `.github/workflows/test.yml` covering backend validation, unit tests, Playwright browser tests, artifact trace uploads, and frontend bundle synchronization checks.
 
 ### Changed
 
-- **Modernized to Home Assistant 2026+ and Gold Quality Scale** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Manifest keys sorted alphabetically, quality scale set to `gold`, and `after_dependencies` declared for frontend and Lovelace integration lifecycle.
-- **Updated Device Registry Lookups** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Migrated deprecated `device_registry.async_get_device` references in test fixtures to `device_registry.async_get_device_by_identifier`.
-- **Refined Repairs Flow Typing** ([#63](https://github.com/ruaan-deysel/ha-vault/pull/63)): Updated `RepairsFlowResult` return types in `repairs.py` for modern Home Assistant typing conventions.
+- **Modernized to Home Assistant 2026+ and Gold Quality Scale** ([#63](https://github.com/tinkerologie/ha-vault/pull/63)): Manifest keys sorted alphabetically, quality scale set to `gold`, and `after_dependencies` declared for frontend and Lovelace integration lifecycle.
+- **Updated Device Registry Lookups** ([#63](https://github.com/tinkerologie/ha-vault/pull/63)): Migrated deprecated `device_registry.async_get_device` references in test fixtures to `device_registry.async_get_device_by_identifier`.
+- **Refined Repairs Flow Typing** ([#63](https://github.com/tinkerologie/ha-vault/pull/63)): Updated `RepairsFlowResult` return types in `repairs.py` for modern Home Assistant typing conventions.
 
 
 ## [2026.06.06] - 2026-06-20
 
 ### Added
 
-- **UI-based removal of orphaned devices** ([#34](https://github.com/ruaan-deysel/ha-vault/issues/34)): Implemented `async_remove_config_entry_device` so Home Assistant's device UI can remove orphaned backup-job or storage-target devices without a full integration reload. The main Vault device is protected from accidental deletion; any other device may be removed manually via the UI.
+- **UI-based removal of orphaned devices** ([#34](https://github.com/tinkerologie/ha-vault/issues/34)): Implemented `async_remove_config_entry_device` so Home Assistant's device UI can remove orphaned backup-job or storage-target devices without a full integration reload. The main Vault device is protected from accidental deletion; any other device may be removed manually via the UI.
 
 ## [2026.06.05] - 2026-06-14
 
 ### Fixed
 
-- **Zeroconf discovery no longer crashes with AttributeError** ([#30](https://github.com/ruaan-deysel/ha-vault/issues/30)): The config flow was attempting to use dictionary `.get()` method on a `ZeroconfServiceInfo` dataclass object passed by Home Assistant during device discovery. Now correctly uses attribute access (`.host`, `.port`, `.properties`) instead of dictionary access, and properly handles `None` values for port with fallback to `DEFAULT_PORT`.
+- **Zeroconf discovery no longer crashes with AttributeError** ([#30](https://github.com/tinkerologie/ha-vault/issues/30)): The config flow was attempting to use dictionary `.get()` method on a `ZeroconfServiceInfo` dataclass object passed by Home Assistant during device discovery. Now correctly uses attribute access (`.host`, `.port`, `.properties`) instead of dictionary access, and properly handles `None` values for port with fallback to `DEFAULT_PORT`.
 
 ## [2026.06.04] - 2026-06-14
 
 ### Added
 
-- **Auto-discovery of Vault daemons via zeroconf/mDNS** ([#28](https://github.com/ruaan-deysel/ha-vault/issues/28)): Home Assistant can now automatically discover Vault instances on the local network using the `_vault._tcp.local.` service type. When a Vault daemon is running and bound to a non-loopback address, it appears in Settings → Devices & Services with automatic host/port detection and TLS configuration from mDNS advertisements. Users can confirm discovery with optional API key authentication if required.
+- **Auto-discovery of Vault daemons via zeroconf/mDNS** ([#28](https://github.com/tinkerologie/ha-vault/issues/28)): Home Assistant can now automatically discover Vault instances on the local network using the `_vault._tcp.local.` service type. When a Vault daemon is running and bound to a non-loopback address, it appears in Settings → Devices & Services with automatic host/port detection and TLS configuration from mDNS advertisements. Users can confirm discovery with optional API key authentication if required.
 
 ## [2026.06.03] - 2026-06-13
 
 ### Added
-- **Anomaly alerts now flow into Home Assistant** ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27)): the coordinator polls Vault's open anomalies (failure streaks, size drift, etc. — the same alerts Vault sends to Unraid notifications)
+- **Anomaly alerts now flow into Home Assistant** ([#27](https://github.com/tinkerologie/ha-vault/issues/27)): the coordinator polls Vault's open anomalies (failure streaks, size drift, etc. — the same alerts Vault sends to Unraid notifications)
   - New **"Open anomalies" sensor** with per-anomaly details (detector, severity, summary, affected job) as attributes
   - New per-job **"Problem" binary sensor** that turns on while the job has an open anomaly
   - `anomaly.raised` / `anomaly.updated` / `anomaly.resolved` / `anomaly.acknowledged` and `baseline.updated` WebSocket events are now forwarded to the Home Assistant event bus (`vault_anomaly_*`, `vault_baseline_updated`)
-- **New `vault_backup_failed` bus event**: a `job_run_completed` WebSocket message with a `failed`/`partial` status now fires `vault_backup_failed` instead of `vault_backup_completed`, so automations can no longer mistake a failed backup for a successful one ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27))
+- **New `vault_backup_failed` bus event**: a `job_run_completed` WebSocket message with a `failed`/`partial` status now fires `vault_backup_failed` instead of `vault_backup_completed`, so automations can no longer mistake a failed backup for a successful one ([#27](https://github.com/tinkerologie/ha-vault/issues/27))
 - **New `missing_items_detected` event type** on the per-job event entities, fired when Vault skips items that no longer exist on the server (with the item list as attributes) — previously these runs looked like clean completions
 - **Instant entity sync after state changes**: job start/completion, verify completion, storage health/capacity changes, anomaly updates, stale-item detections, config changes, and imports now trigger an immediate (debounced) coordinator refresh, so sensors update within ~1 second instead of waiting up to 60 seconds for the next poll
 
 ### Fixed
 
-- **Integration no longer locks up during backup runs** ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27)): Vault reports `null` for fields like `duration_seconds` while a run is in progress, which crashed every coordinator poll for the duration of the run and made all entities unavailable (the "lockup" seen when stress-testing the backup buttons). API models now treat explicit nulls as missing values, and unexpected payload shapes mark the update as failed instead of raising an unhandled error
-- **Failed backups no longer show as completed** ([#27](https://github.com/ruaan-deysel/ha-vault/issues/27)): the combination of the lockup fix (status sensors froze mid-run) and the corrected completion event mapping means job status, "Last run successful", and event entities now reflect failures in real time
+- **Integration no longer locks up during backup runs** ([#27](https://github.com/tinkerologie/ha-vault/issues/27)): Vault reports `null` for fields like `duration_seconds` while a run is in progress, which crashed every coordinator poll for the duration of the run and made all entities unavailable (the "lockup" seen when stress-testing the backup buttons). API models now treat explicit nulls as missing values, and unexpected payload shapes mark the update as failed instead of raising an unhandled error
+- **Failed backups no longer show as completed** ([#27](https://github.com/tinkerologie/ha-vault/issues/27)): the combination of the lockup fix (status sensors froze mid-run) and the corrected completion event mapping means job status, "Last run successful", and event entities now reflect failures in real time
 - **WebSocket event payloads are no longer dropped**: `stale_items_detected` (count + items), `activity` (log entry), and anomaly events (full anomaly data) previously arrived on the Home Assistant bus with only their type — the payload fields were missing from the event model
 - `async_get_anomalies` API client method now unwraps the `{"anomalies": [...]}` response envelope (it previously always returned an empty list)
 
