@@ -7,7 +7,7 @@
 
 **Develop in the cloud:** Want to contribute or customize this integration? Open it directly in GitHub Codespaces - no local setup required.
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ruaan-deysel/ha-vault?quickstart=1)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/tinkerologie/ha-vault?quickstart=1)
 
 ## Features
 
@@ -41,7 +41,7 @@
 
 Click the button below to open the integration directly in HACS:
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=ruaan-deysel&repository=ha-vault&category=integration)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=tinkerologie&repository=ha-vault&category=integration)
 
 Then:
 
@@ -467,7 +467,7 @@ Want to contribute or customize this integration? You have two options:
 
 The easiest way to get started - develop directly in your browser with GitHub Codespaces:
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/ruaan-deysel/ha-vault?quickstart=1)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/tinkerologie/ha-vault?quickstart=1)
 
 - Zero local setup required
 - Pre-configured development environment
@@ -494,9 +494,9 @@ Both options give you the same fully-configured development environment with Hom
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 [commits-shield]: https://img.shields.io/github/commit-activity/y/ruaan-deysel/ha-vault.svg?style=for-the-badge
-[commits]: https://github.com/ruaan-deysel/ha-vault/commits/main
+[commits]: https://github.com/tinkerologie/ha-vault/commits/main
 [hacs]: https://github.com/hacs/integration
 [hacsbadge]: https://img.shields.io/badge/HACS-Default-orange.svg?style=for-the-badge
 [license-shield]: https://img.shields.io/github/license/ruaan-deysel/ha-vault.svg?style=for-the-badge
 [releases-shield]: https://img.shields.io/github/release/ruaan-deysel/ha-vault.svg?style=for-the-badge
-[releases]: https://github.com/ruaan-deysel/ha-vault/releases
+[releases]: https://github.com/tinkerologie/ha-vault/releases
