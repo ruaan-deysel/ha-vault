@@ -15,7 +15,7 @@
     "lit": "3.3.3"
   },
   "devDependencies": {
-    "@playwright/test": "1.51.0",
+    "@playwright/test": "1.64.0",
     "typescript": "6.0.3",
     "vite": "8.3.1"
   }
